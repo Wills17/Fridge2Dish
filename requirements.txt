@@ -1,0 +1,7 @@
+streamlit
+tensorflow>=2.11
+pillow
+numpy
+opencv-python
+tqdm
+gdown
