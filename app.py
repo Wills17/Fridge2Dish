@@ -4,7 +4,7 @@ from PIL import Image
 import io
 import json
 import numpy as np
-from detector.infer import infer_image  # we'll create a simple infer function
+from detector.infer2 import infer_image
 
 st.set_page_config(page_title="Fridge2Dish", layout="centered")
 
@@ -22,8 +22,9 @@ if uploaded:
     st.write(ingredients)
 
     with st.spinner("Generating recipe..."):
-        # simple recipe generator (rule-based)
-        from recipes.templates import generate_recipe
+        
+        # from recipes.templates import generate_recipe
+        from recipes.recipe_online import generate_recipe
         recipe = generate_recipe(ingredients)
     st.markdown("### Suggested Recipe")
     st.write(recipe)
