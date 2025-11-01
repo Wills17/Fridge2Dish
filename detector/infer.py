@@ -30,7 +30,6 @@ _MAPPING = {
     "onion": ["onion"],
     "potato": ["potato"],
     "carrot": ["carrot"],
-    # add more mappings as you like
 }
 
 def infer_image(pil_image, top_k=3):
@@ -49,7 +48,8 @@ def infer_image(pil_image, top_k=3):
             ingredients.extend(_MAPPING[name])
         elif key in _MAPPING:
             ingredients.extend(_MAPPING[key])
-        # also use raw name if it looks like a food
+            
+        # Also use raw name if it looks like a food
         else:
             # a small heuristic to include food-like names
             food_keywords = ["egg","tomato","cheese","milk","bread","onion","potato","banana","apple","lemon","orange","butter","yogurt","strawberry","cucumber","carrot"]

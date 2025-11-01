@@ -1,20 +1,21 @@
-
-
+# import libraries
 import os
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras import layers, models
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+
 
 # Paths
 DATA_DIR = "dataset"
 MODEL_PATH = "models/ingredient_model.h5"
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 16
-EPOCHS = 8
+EPOCHS = 30
 
-# Data preparation
+# Datagen preparation
 train_datagen = ImageDataGenerator(
     rescale=1./255,
     validation_split=0.2,
@@ -58,20 +59,34 @@ model.compile(
     metrics=["accuracy"]
 )
 
+# add earlystoping callbacks
+callbacks = [
+    EarlyStopping(monitor='val_loss', patience=4, restore_best_weights=True),
+    ModelCheckpoint(MODEL_PATH, save_best_only=True)
+]
+
+
 # Training
 history = model.fit(
     train_gen,
     validation_data=val_gen,
-    epochs=EPOCHS
+    epochs=EPOCHS,
+    callbacks=callbacks
 )
 
-# Optional: unfreeze last few layers for fine-tuning
+
+# Unfreeze last few layers for fine-tuning
 base_model.trainable = True
-for layer in base_model.layers[:-30]:
+for layer in base_model.layers[:-60]:
     layer.trainable = False
 
-model.compile(optimizer=Adam(1e-4), loss="categorical_crossentropy", metrics=["accuracy"])
-model.fit(train_gen, validation_data=val_gen, epochs=3)
+model.compile(
+    optimizer=Adam(1e-4), 
+    loss="categorical_crossentropy", 
+    metrics=["accuracy"])
+
+model.fit(train_gen, validation_data=val_gen, epochs=10)
+
 
 # Save model
 os.makedirs("models", exist_ok=True)
