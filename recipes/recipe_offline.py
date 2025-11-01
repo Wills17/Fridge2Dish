@@ -1,4 +1,4 @@
-# recipes/templates.py
+# Rule-based recipe generator
 
 RECIPE_TEMPLATES = [
     {
