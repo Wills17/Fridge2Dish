@@ -1,14 +1,21 @@
-# Recipe generator using OpenAI API
+# Recipe generator using Gemini API.
 
 # import libraries
-from openai import OpenAI
 import os
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Configure Gemini client
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # generate recipe function
 def generate_recipe(ingredients):
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    
     prompt = f"""
     You are an AI chef. Create a short recipe using only: {', '.join(ingredients)}.
     Include:
@@ -19,11 +26,6 @@ def generate_recipe(ingredients):
     - Optional fun tips or variations
     Make it easy to follow and appetizing!
     """
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        # model="gpt-3.5-turbo",
-        
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.9
-    )
-    return resp.choices[0].message.content.strip()
+    
+    response = model.generate_content(prompt)
+    return response.text.strip()
