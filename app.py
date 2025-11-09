@@ -1,7 +1,6 @@
-# import libraires
+# import libraries and modules
 import streamlit as st
 from PIL import Image
-import io
 import numpy as np
 from detector.infer2 import infer_image
 
@@ -12,7 +11,7 @@ st.set_page_config(page_title="Fridge2Dish", layout="centered")
 st.title("Fridge2Dish — AI Chef from Leftovers 🍳🥦")
 st.write("Upload a photo of your fridge or ingredients and get a recipe suggestion.")
 
-# Image upload
+# Upload Image
 uploaded = st.file_uploader("Upload fridge/photo", type=["jpg","jpeg","png"])
 if uploaded:
     image = Image.open(uploaded).convert("RGB")
@@ -25,7 +24,7 @@ if uploaded:
 
     with st.spinner("Generating recipe..."):
         
-        from recipe_generator.recipe_local import generate_recipe
+        from recipe_generator.recipe_online import generate_recipe
         recipe = generate_recipe(ingredients)
         
     st.markdown("### Suggested Recipe")
