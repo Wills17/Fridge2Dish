@@ -22,10 +22,13 @@ def generate_recipe(ingredients):
     - Recipe name
     - One-sentence description
     - Ingredients list with quantities
-    - 3-5 concise steps
+    - 3-6 concise steps
     - Optional fun tips or variations
     Make it easy to follow and appetizing!
+
+    Do not include any lines like "Sure! Here's a recipe...", "Here's a simple..." or similar.
     """
     
     response = model.generate_content(prompt)
+    print(response.text.strip())
     return response.text.strip()

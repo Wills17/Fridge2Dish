@@ -1,4 +1,4 @@
-# # Recipe generator using Hugging Face Transformers
+# Recipe generator using Hugging Face Transformers
 
 # import libraries
 from transformers import pipeline
