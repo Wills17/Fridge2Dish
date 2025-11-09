@@ -1,3 +1,5 @@
+# training script for ingredient detection model.
+
 # import libraries
 import os
 import tensorflow as tf
@@ -8,17 +10,22 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 
+
 # Paths
-DATA_DIR = "dataset"
-MODEL_PATH = "models/ingredient_model.h5"
+# DATA_DIR = "dataset"
+DATA_DIR = "dataset/Food"
+
+# MODEL_PATH = "models/ingredient_model.h5"
+MODEL_PATH = "models/ingredient_model_2.h5"
+
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 16
 EPOCHS = 30
 
+
 # Datagen preparation
 train_datagen = ImageDataGenerator(
     rescale=1./255,
-    validation_split=0.2,
     rotation_range=15,
     width_shift_range=0.1,
     height_shift_range=0.1,
@@ -27,18 +34,31 @@ train_datagen = ImageDataGenerator(
     horizontal_flip=True
 )
 
+# Add validation and Test datagen
+val_datagen = ImageDataGenerator(rescale=1./255)
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+
 train_gen = train_datagen.flow_from_directory(
-    DATA_DIR,
+    DATA_DIR + "/train",
     target_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    subset="training"
+    class_mode='categorical',
 )
 
 val_gen = train_datagen.flow_from_directory(
-    DATA_DIR,
+    DATA_DIR + "/validation",
     target_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    subset="validation"
+    class_mode='categorical',
+    )
+    
+test_gen = test_datagen.flow_from_directory(
+    DATA_DIR + "/test",
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    shuffle=False
 )
 
 # Model
@@ -75,10 +95,11 @@ history = model.fit(
 )
 
 
-# Unfreeze last few layers for fine-tuning
+# unfreeze last 60 layers for fine-tuning
 base_model.trainable = True
 for layer in base_model.layers[:-60]:
     layer.trainable = False
+
 
 model.compile(
     optimizer=Adam(1e-4), 
