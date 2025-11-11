@@ -3,6 +3,7 @@
 # import libraries
 import os
 import tensorflow as tf
+import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras import layers, models
@@ -11,16 +12,17 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 
 
+
 # Paths
 # DATA_DIR = "dataset"
-DATA_DIR = "dataset/Food"
+DATA_DIR = "dataset/dataset_2"
 
 # MODEL_PATH = "models/ingredient_model.h5"
 MODEL_PATH = "models/ingredient_model_2.h5"
 
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 16
-EPOCHS = 30
+EPOCHS = 50
 
 
 # Datagen preparation
@@ -34,7 +36,7 @@ train_datagen = ImageDataGenerator(
     horizontal_flip=True
 )
 
-# Add validation and Test datagen
+# Add validation and test datagen
 val_datagen = ImageDataGenerator(rescale=1./255)
 test_datagen = ImageDataGenerator(rescale=1./255)
 
@@ -94,19 +96,29 @@ history = model.fit(
     callbacks=callbacks
 )
 
+# Plot training history
+plt.figure(figsize=(12, 4))
 
-# unfreeze last 60 layers for fine-tuning
-base_model.trainable = True
-for layer in base_model.layers[:-60]:
-    layer.trainable = False
+# Plot training & validation accuracy
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper left')
 
+# Plot training & validation loss
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Model Loss')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper left')
 
-model.compile(
-    optimizer=Adam(1e-4), 
-    loss="categorical_crossentropy", 
-    metrics=["accuracy"])
-
-model.fit(train_gen, validation_data=val_gen, epochs=10)
+plt.tight_layout()
+plt.show()   
 
 
 # Save model
