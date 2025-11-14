@@ -12,7 +12,7 @@ st.title("Fridge2Dish — AI Chef from Leftovers 🍳🥦")
 st.write("Upload a photo of your fridge or ingredients and get a recipe suggestion.")
 
 # Upload Image
-uploaded = st.file_uploader("Upload fridge/photo", type=["jpg","jpeg","png"])
+uploaded = st.file_uploader("Upload fridge/photo", type=["jpg","jpeg","png", "webp"])
 if uploaded:
     image = Image.open(uploaded).convert("RGB")
     st.image(image, caption="Input image", use_column_width=True)
