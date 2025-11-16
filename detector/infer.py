@@ -49,13 +49,14 @@ def infer_image(pil_image, top_k=3):
         elif key in _MAPPING:
             ingredients.extend(_MAPPING[key])
             
-        # Also use raw name if it looks like a food
+        # Use raw name if it looks like a food
         else:
-            # a small heuristic to include food-like names
+            # small heuristic to include food-like names
             food_keywords = ["egg","tomato","cheese","milk","bread","onion","potato","banana","apple","lemon","orange","butter","yogurt","strawberry","cucumber","carrot"]
             for kw in food_keywords:
                 if kw in name:
                     ingredients.append(kw)
+                    
     # deduplicate and limit
     ingredients = list(dict.fromkeys(ingredients))
     return ingredients if ingredients else ["unknown"]
