@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fridge2Dish - AI Recipe Generator from Your Ingredients</title>
+    <meta name="description" content="Transform your ingredients into delicious recipes with AI-powered ingredient detection and personalized recipe suggestions">
+    <meta name="author" content="Fridge2Dish">
+    
+    <meta property="og:title" content="Fridge2Dish - AI Recipe Generator">
+    <meta property="og:description" content="Upload your ingredients and get AI-powered recipe suggestions instantly">
+    <meta property="og:type" content="website">
+
+    <link rel="stylesheet" href="/static/styles.css">
+
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-container">
+                    <svg class="chef-hat-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
+                        <line x1="6" x2="18" y1="17" y2="17"/>
+                    </svg>
+                </div>
+                <h1 class="logo-text">Fridge2Dish</h1>
+
+                <!-- Dark Mode Toggle -->
+                <button id="darkModeToggle" class="dark-mode-toggle" aria-label="Toggle dark mode">
+                    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2"/>
+                        <path d="M12 20v2"/>
+                        <path d="m4.93 4.93 1.41 1.41"/>
+                        <path d="m17.66 17.66 1.41 1.41"/>
+                        <path d="M2 12h2"/>
+                        <path d="M20 12h2"/>
+                        <path d="m6.34 17.66-1.41 1.41"/>
+                        <path d="m19.07 4.93-1.41 1.41"/>
+                    </svg>
+                    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                    </svg>
+                </button>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Hero Section -->
+            <div id="heroSection" class="hero-section">
+                <h2 class="hero-title">
+                    Turn Your Ingredients Into 
+                    <span class="gradient-text">Delicious Meals</span>
+                </h2>
+                <p class="hero-description">
+                    Upload a photo of your ingredients and let AI suggest amazing recipes you can cook right now
+                </p>
+            </div>
+
+            <!-- Image Upload Section -->
+            <div class="upload-section">
+                <div class="upload-card">
+                    <!-- API Key Input -->
+                    <div class="api-key-section">
+                        <label for="apiKey" class="api-key-label">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/>
+                                <path d="m21 2-9.6 9.6"/>
+                                <circle cx="7.5" cy="15.5" r="5.5"/>
+                            </svg>
+                            Gemini API Key
+                        </label>
+                        <input 
+                            type="password" 
+                            id="apiKey" 
+                            class="api-key-input" 
+                            placeholder="Enter your Gemini API key"
+                        >
+                    </div>
+
+                    <!-- Upload Area -->
+                    <div id="uploadArea" class="upload-area">
+                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" x2="12" y1="3" y2="15"/>
+                        </svg>
+                        <p class="upload-text">Drop your ingredient photo here or click to browse</p>
+                        <p class="upload-subtext">Supported formats: JPG, JPEG, PNG, WEBP</p>
+                        <input type="file" id="fileInput" accept="image/*" hidden>
+                    </div>
+
+                    <!-- Image Preview -->
+                    <div id="previewSection" class="preview-section" style="display: none;">
+                        <img id="previewImage" class="preview-image" alt="Uploaded ingredients">
+                        <button id="resetButton" class="reset-button">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18 6 6 18"/>
+                                <path d="m6 6 12 12"/>
+                            </svg>
+                            Reset
+                        </button>
+                    </div>
+
+                    <!-- Scan Button -->
+                    <button id="scanButton" class="scan-button" style="display: none;">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+                            <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                            <rect width="10" height="8" x="7" y="8" rx="1"/>
+                        </svg>
+                        <span id="scanButtonText">Scan for Ingredients</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="results-section" style="display: none;">
+                <!-- Detected Ingredients -->
+                <div class="results-card">
+                    <div class="card-header">
+                        <svg class="icon-success" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                            <path d="m9 12 2 2 4-4"/>
+                        </svg>
+                        <h3>Detected Ingredients</h3>
+                    </div>
+                    <div id="ingredientsList" class="ingredients-list"></div>
+                </div>
+
+                <!-- Recipe Cards -->
+                <div id="recipesSection" style="display: none;">
+                    <h3 class="recipes-title">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
+                            <line x1="6" x2="18" y1="17" y2="17"/>
+                        </svg>
+                        Suggested Recipes
+                    </h3>
+                    <div id="recipesList" class="recipes-list"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">AI-Powered • Made by <a href="https://github.com/Wills17" target="_blank">Wills</a></p>
+        </div>
+    </footer>
+
+    <script src="/static/scripts.js" defer></script>
+</body>
+</html>
