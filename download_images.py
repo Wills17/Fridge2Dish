@@ -1,3 +1,4 @@
+# download images for specific labels with bing_image_downloader library
 
 from bing_image_downloader import downloader
 
