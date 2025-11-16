@@ -8,8 +8,7 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras import layers, models
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 
 
 
@@ -22,7 +21,7 @@ MODEL_PATH = "models/ingredient_model_2.h5"
 
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 16
-EPOCHS = 50
+EPOCHS = 30
 
 
 # Datagen preparation
@@ -84,44 +83,86 @@ model.compile(
 # add earlystoping callbacks
 callbacks = [
     EarlyStopping(monitor='val_loss', patience=4, restore_best_weights=True),
-    ModelCheckpoint(MODEL_PATH, save_best_only=True)
+    ModelCheckpoint(MODEL_PATH, save_best_only=True),
+    ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
 ]
 
+print(model.summary())
 
-# Training
-history = model.fit(
+
+# First phase: train top layers only
+print("\n Phase 1: Training top layers only...")
+history_1 = model.fit(
     train_gen,
     validation_data=val_gen,
     epochs=EPOCHS,
     callbacks=callbacks
 )
 
-# Plot training history
-plt.figure(figsize=(12, 4))
-
-# Plot training & validation accuracy
-plt.subplot(1, 2, 1)
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
-plt.title('Model Accuracy')
-plt.ylabel('Accuracy')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-
-# Plot training & validation loss
-plt.subplot(1, 2, 2)
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
-plt.title('Model Loss')
-plt.ylabel('Loss')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-
-plt.tight_layout()
-plt.show()   
-
-
-# Save model
+# save model
 os.makedirs("models", exist_ok=True)
 model.save(MODEL_PATH)
-print(f"✅ Model saved at {MODEL_PATH}")
+print(f"Model saved after Phase 1 at {MODEL_PATH}")
+
+
+
+# Second phase: fine-tuning
+print("\n Phase 2: Fine-tuning last layers of MobileNetV2...")
+
+# unfreeze last few layers
+fine_tune_layers = int(len(base_model.layers) * 0.7)
+for layer in base_model.layers[:fine_tune_layers]:
+    layer.trainable = False
+for layer in base_model.layers[fine_tune_layers:]:
+    layer.trainable = True
+
+
+# recompile with a lower learning rate
+model.compile(
+    optimizer=Adam(learning_rate=1e-5), 
+    loss="categorical_crossentropy", 
+    metrics=["accuracy"]
+    )
+
+
+history_2 = model.fit(
+    train_gen,
+    validation_data=val_gen,
+    epochs=15,
+    callbacks=callbacks
+)
+
+
+# Save final model
+model.save(MODEL_PATH)
+print(f"Final fine-tuned model saved at {MODEL_PATH}")
+
+
+
+# Plot training history
+acc = history_1.history['accuracy'] + history_2.history['accuracy']
+val_acc = history_1.history['val_accuracy'] + history_2.history['val_accuracy']
+loss = history_1.history['loss'] + history_2.history['loss']
+val_loss = history_1.history['val_loss'] + history_2.history['val_loss']
+
+# Accuracy plot
+plt.subplot(1, 2, 1)
+plt.plot(acc, label='Train Accuracy')
+plt.plot(val_acc, label='Val Accuracy')
+plt.title('Model Accuracy (Training + Fine-tuning)')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend(loc='lower right')
+
+# Loss plot
+plt.subplot(1, 2, 2)
+plt.plot(loss, label='Train Loss')
+plt.plot(val_loss, label='Val Loss')
+plt.title('Model Loss (Training + Fine-tuning)')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend(loc='upper right')
+
+plt.tight_layout()
+plt.show()
+
