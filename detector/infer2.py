@@ -10,9 +10,36 @@ CLASS_NAMES = sorted(os.listdir("dataset/dataset_2/train"))  # folder names = cl
 
 
 def infer_image(pil_image):
+    
+    # Preprocess
     img = pil_image.resize((224, 224))
-    x = np.expand_dims(np.array(img) / 255.0, axis=0)
-    preds = MODEL.predict(x)[0]
+    IMG = np.expand_dims(np.array(img) / 255.0, axis=0)
+    
+    # Model prediction and probabilities
+    preds = MODEL.predict(IMG)[0]
+    
+    # Use top predictions
     top_idxs = np.argsort(preds)[::-1][:3]
-    ingredients = [CLASS_NAMES[i] for i in top_idxs if preds[i] > 0.1]
-    return ingredients or ["unknown"]
+    
+    # Build ingredient list
+    ingredients = []
+
+    for i in top_idxs:
+        confidence = float(preds[i])
+        if confidence < 0.20:
+            continue  # skip ingredients with confidence less than 20%
+        
+        ingredients.append({
+            "name": CLASS_NAMES[i],
+            "confidence": confidence
+        })
+        
+        # Limit to top 3–5 ingredients if you want
+        if len(ingredients) >= 5:
+            break
+    
+    # incase of no prediction.
+    if not ingredients:
+        return [{"name": "unknown", "confidence": 0.0}]
+
+    return ingredients
