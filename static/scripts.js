@@ -1,13 +1,14 @@
 // State management
-let state = {
+const state = {
     uploadedImage: null,
     detectedIngredients: [],
     recipes: [],
     isProcessing: false,
-    geminiApiKey: ""
+    geminiApiKey: "",
+    skipApiKeyWarning: false
 };
 
-// DOM Elements
+// DOM elements 
 const elements = {
     apiKeyInput: document.getElementById('apiKey'),
     uploadArea: document.getElementById('uploadArea'),
@@ -28,38 +29,44 @@ const elements = {
 // Initialize app
 function init() {
     setupEventListeners();
-    loadApiKeyFromStorage();
+    loadStoredPreferences();
     loadDarkModePreference();
 }
 
-// Setup event listeners
+// Load stored API key and preferences
+function loadStoredPreferences() {
+    const savedKey = localStorage.getItem('geminiApiKey');
+    const skipWarning = localStorage.getItem('skipApiKeyWarning') === 'true';
 
-// Dark mode functions
+    if (savedKey) {
+        state.geminiApiKey = savedKey;
+        elements.apiKeyInput.value = savedKey;
+    }
+
+    state.skipApiKeyWarning = skipWarning;
+}
+
+// load dark mode preference
 function loadDarkModePreference() {
-    const isDark = localStorage.getItem('darkMode') === 'true';
-    if (isDark) {
+    if (localStorage.getItem('darkMode') === 'true') {
         document.documentElement.classList.add('dark');
     }
 }
 
-function toggleDarkMode() {
-    const isDark = document.documentElement.classList.toggle('dark');
-    localStorage.setItem('darkMode', isDark);
-}
-
+// setup event listeners
 function setupEventListeners() {
-    // API Key input
+
+    // API key field
     elements.apiKeyInput.addEventListener('input', (e) => {
-        state.geminiApiKey = e.target.value;
-        localStorage.setItem('geminiApiKey', e.target.value);
+        const key = e.target.value.trim();
+        state.geminiApiKey = key;
+        localStorage.setItem('geminiApiKey', key);
     });
 
-    // Upload area click
-    elements.uploadArea.addEventListener('click', () => {
-        elements.fileInput.click();
-    });
+    // Upload area click triggers file input
+    elements.uploadArea.addEventListener('click', () => elements.fileInput.click());
 
-    // Drag and drop
+    // Drag & drop support
     elements.uploadArea.addEventListener('dragover', (e) => {
         e.preventDefault();
         elements.uploadArea.style.borderColor = 'var(--primary)';
@@ -72,43 +79,36 @@ function setupEventListeners() {
     elements.uploadArea.addEventListener('drop', (e) => {
         e.preventDefault();
         elements.uploadArea.style.borderColor = 'var(--border)';
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFileUpload(files[0]);
+        if (e.dataTransfer.files.length > 0) {
+            handleFileUpload(e.dataTransfer.files[0]);
         }
     });
 
     // File input change
     elements.fileInput.addEventListener('change', (e) => {
-        const files = e.target.files;
-        if (files.length > 0) {
-            handleFileUpload(files[0]);
+        if (e.target.files.length > 0) {
+            handleFileUpload(e.target.files[0]);
         }
     });
 
-    // Reset button
+    // Reset
     elements.resetButton.addEventListener('click', resetUpload);
 
     // Scan button
     elements.scanButton.addEventListener('click', handleScan);
 
     // Dark mode toggle
-    elements.darkModeToggle.addEventListener('click', toggleDarkMode);
+    elements.darkModeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('darkMode', isDark);
+    });
 }
 
-// Load API key from localStorage
-function loadApiKeyFromStorage() {
-    const savedKey = localStorage.getItem('geminiApiKey');
-    if (savedKey) {
-        state.geminiApiKey = savedKey;
-        elements.apiKeyInput.value = savedKey;
-    }
-}
 
-// Handle file upload
+// File Upload + Preview
 function handleFileUpload(file) {
     if (!file.type.startsWith('image/')) {
-        alert('Please upload an image file');
+        alert('Please upload a valid image file.');
         return;
     }
 
@@ -120,9 +120,9 @@ function handleFileUpload(file) {
     reader.readAsDataURL(file);
 }
 
-// Show image preview
 function showImagePreview(imageUrl) {
     elements.previewImage.src = imageUrl;
+
     elements.uploadArea.style.display = 'none';
     elements.previewSection.style.display = 'block';
     elements.scanButton.style.display = 'flex';
@@ -134,6 +134,7 @@ function resetUpload() {
     state.uploadedImage = null;
     state.detectedIngredients = [];
     state.recipes = [];
+
     elements.fileInput.value = '';
     elements.uploadArea.style.display = 'block';
     elements.previewSection.style.display = 'none';
@@ -142,223 +143,254 @@ function resetUpload() {
     elements.heroSection.style.display = 'block';
 }
 
-// Handle scan
+
+// Image Scan and Backend Processing
 async function handleScan() {
     if (!state.uploadedImage) {
-        alert('Please upload an image first');
+        alert('Please upload an image first.');
         return;
     }
 
-    // Warn but DO NOT block if API key missing
-    if (!state.geminiApiKey) {
-        const proceed = confirm(
-            "⚠️ You are continuing without a Gemini API key.\n\n" +
-            "• Recipe quality may be reduced\n" +
-            "• AI creativity will be limited\n\n" +
-            "Do you still want to continue?"
-        );
-
-        if (!proceed) return;
-    }
+    await handleMissingApiKeyWarning();
 
     state.isProcessing = true;
     updateScanButton(true);
 
     try {
-        // Convert Base64 image → Blob → File
-        const blob = await (await fetch(state.uploadedImage)).blob();
-        const file = new File([blob], "upload.jpg", { type: blob.type });
-
-        // Prepare form data
         const formData = new FormData();
-        formData.append("file", file);
-        formData.append("api_key", state.geminiApiKey);
 
-        // Call the backend
-        const response = await fetch("/upload-image/", {
-            method: "POST",
-            body: formData
-        });
+        // Convert Base64 → Blob → File
+        const blob = await (await fetch(state.uploadedImage)).blob();
+        formData.append("file", new File([blob], "upload.jpg", { type: blob.type }));
+        formData.append("api_key", (state.geminiApiKey || "").trim());
 
-        if (!response.ok) {
-            throw new Error("Backend error: " + response.statusText);
-        }
+        const response = await fetch("/upload-image/", { method: "POST", body: formData });
+
+        if (!response.ok) throw new Error("Backend error: " + response.status);
 
         const data = await response.json();
 
-        // Update UI with backend results
-        state.detectedIngredients = data.ingredients;
-        state.recipes = data.recipe;
+        // Convert backend output to frontend format
+        state.detectedIngredients = (data.ingredients || []).map(item => ({
+            name: item.name,
+            confidence: item.confidence
+        }));
+
+        state.recipes = [{
+            name: "AI-Generated Recipe",
+            ingredients: (data.ingredients || []).map(i => i.name),
+            steps: [data.recipe]
+        }];
+
 
         displayIngredients(state.detectedIngredients);
         displayRecipes(state.recipes);
-
         elements.resultsSection.style.display = 'block';
 
-    } catch (error) {
-        console.error("Scan failed:", error);
-        alert("Failed to process the image. Please try again.");
-    } finally {
-        state.isProcessing = false;
-        updateScanButton(false);
+    } catch (err) {
+        console.error(err);
+        alert("Something went wrong while processing the image.");
+    }
+
+    state.isProcessing = false;
+    updateScanButton(false);
+}
+
+
+ // Missing API Key Warning
+async function handleMissingApiKeyWarning() {
+    if (state.geminiApiKey || state.skipApiKeyWarning) return;
+
+    const proceed = confirm(
+        "⚠️ Continue without a Gemini API key?\n\n" +
+        "• Recipe quality may be downgraded\n" +
+        "• AI creativity reduced\n\n" +
+        "Proceed anyway?"
+    );
+
+    if (!proceed) throw new Error("User cancelled scan.");
+
+    const dontShowAgain = confirm("Skip this warning next time?");
+    if (dontShowAgain) {
+        state.skipApiKeyWarning = true;
+        localStorage.setItem('skipApiKeyWarning', 'true');
     }
 }
 
-// Update scan button state
-function updateScanButton(isProcessing) {
-    elements.scanButton.disabled = isProcessing;
-    elements.scanButton.classList.toggle('processing', isProcessing);
-    
-    if (isProcessing) {
-        elements.scanButtonText.textContent = 'Processing...';
-        const icon = elements.scanButton.querySelector('svg');
-        if (icon) icon.classList.add('spinning');
-    } else {
-        elements.scanButtonText.textContent = 'Scan for Ingredients';
-        const icon = elements.scanButton.querySelector('svg');
-        if (icon) icon.classList.remove('spinning');
-    }
+// UI Helper: Scan Button State
+function updateScanButton(isLoading) {
+    elements.scanButton.disabled = isLoading;
+    elements.scanButtonText.textContent = isLoading ? "Processing..." : "Scan Ingredients";
 }
 
-// Display detected ingredients
+
+// Rendering Ingredients UI
 function displayIngredients(ingredients) {
     elements.ingredientsList.innerHTML = '';
-    
+
     ingredients.forEach((ingredient, index) => {
+        // Handle all 
+        if (!ingredient || typeof ingredient !== "object") {
+            ingredient = { name: String(ingredient), confidence: 0 };
+        }
+
+        const name = ingredient.name ?? "Unknown";
+        const confidence = ingredient.confidence ?? 0;
+
         const item = document.createElement('div');
         item.className = 'ingredient-item';
-        item.style.opacity = '0';
         item.style.animation = `fadeIn 0.5s ease-out ${index * 0.1}s forwards`;
-        
+
         item.innerHTML = `
             <div class="ingredient-header">
                 <div class="ingredient-info">
-                    <span class="ingredient-name">${ingredient.name}</span>
-                    <span class="confidence-badge">${Math.round(ingredient.confidence * 100)}% confidence</span>
+                    <span class="ingredient-name">${name}</span>
+                    <span class="confidence-badge">
+                        ${Math.round(confidence * 100)}% confidence
+                    </span>
                 </div>
             </div>
             <div class="confidence-bar">
-                <div class="confidence-fill" style="width: ${ingredient.confidence * 100}%"></div>
+                <div class="confidence-fill" style="width: ${confidence * 100}%"></div>
             </div>
         `;
-        
+
         elements.ingredientsList.appendChild(item);
     });
 }
 
-// Display recipes
+
+// Rendering Recipes UI (Markdown support)
 function displayRecipes(recipes) {
     elements.recipesSection.style.display = 'block';
     elements.recipesList.innerHTML = '';
-    
+
     recipes.forEach((recipe, index) => {
         const card = document.createElement('div');
         card.className = 'recipe-card';
-        card.style.opacity = '0';
         card.style.animation = `fadeIn 0.5s ease-out ${index * 0.15}s forwards`;
-        
-        const visibleIngredients = recipe.ingredients.slice(0, 5);
-        const hasMoreIngredients = recipe.ingredients.length > 5;
-        
-        const visibleSteps = recipe.steps.slice(0, 3);
-        const hasMoreSteps = recipe.steps.length > 3;
-        
-        card.innerHTML = `
-            <div class="recipe-header">
-                <div class="recipe-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
-                        <line x1="6" x2="18" y1="17" y2="17"/>
-                    </svg>
-                </div>
-                <div class="recipe-title-section">
-                    <h4 class="recipe-name">${recipe.name}</h4>
-                    <div class="recipe-time">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <polyline points="12 6 12 12 16 14"/>
-                        </svg>
-                        <span>${recipe.time || 'Est. 30 mins'}</span>
-                    </div>
-                </div>
-            </div>
-            
+
+        // Short / long ingredients
+        const shortIngredients = (recipe.ingredients || [])
+            .map(i => (typeof i === "string" ? i : (i.name ?? "Unknown")))
+            .slice(0, 5);
+
+        const hasMoreIngredients = (recipe.ingredients || []).length > 5;
+
+        // Steps handling: steps may be an array of short steps, or a single big markdown string
+        const stepsArr = recipe.steps || [];
+        const isSingleLongMarkdown = stepsArr.length === 1 && (stepsArr[0].includes('\n\n') || stepsArr[0].includes('#') || stepsArr[0].includes('- '));
+
+        // Build Ingredients html
+        const ingredientsHtml = `
             <div class="recipe-section">
                 <h5 class="section-title">Ingredients</h5>
-                <div class="ingredients-grid" data-full-list="${JSON.stringify(recipe.ingredients).replace(/"/g, '&quot;')}">
-                    ${visibleIngredients.map(ing => `
-                        <span class="ingredient-tag">${ing}</span>
-                    `).join('')}
-                    ${hasMoreIngredients ? `
-                        <button class="show-more-btn ingredient-more">+${recipe.ingredients.length - 5} more</button>
-                    ` : ''}
+                <div class="ingredients-grid" data-full="${encodeURIComponent(JSON.stringify(recipe.ingredients || []))}">
+                    ${shortIngredients.map(i => `<span class="ingredient-tag">${i}</span>`).join('')}
+                    ${hasMoreIngredients ? `<button class="show-more-btn ingredient-more">+${(recipe.ingredients || []).length - 5} more</button>` : ''}
                 </div>
             </div>
-            
-            <div class="recipe-section">
-                <h5 class="section-title">Preparation Steps</h5>
-                <ol class="steps-list" data-full-list="${JSON.stringify(recipe.steps).replace(/"/g, '&quot;')}">
-                    ${visibleSteps.map(step => `
-                        <li class="step-item">
-                            <span class="step-text">${step}</span>
-                        </li>
-                    `).join('')}
-                </ol>
-                ${hasMoreSteps ? `
-                    <button class="show-more-btn steps-more">Show ${recipe.steps.length - 3} more steps</button>
-                ` : ''}
-            </div>
         `;
-        
+
+        // Build Steps html
+        let stepsHtml = '';
+        if (isSingleLongMarkdown) {
+            // render whole markdown blob (not inside <ol>)
+            const mdText = stepsArr[0] || '';
+            const htmlFromMd = (typeof marked !== 'undefined')
+                ? marked.parse(mdText)
+                : mdText.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+            stepsHtml = `
+                <div class="recipe-section">
+                    <h5 class="section-title">Steps</h5>
+                    <div class="recipe-markdown">${htmlFromMd}</div>
+                </div>
+            `;
+        } else {
+            // render as ordered list of steps (short step items)
+            const shortSteps = stepsArr.slice(0, 3);
+            const hasMoreSteps = stepsArr.length > 3;
+            const shortStepsHtml = shortSteps
+                .map(s => {
+                    const rendered = (typeof marked !== 'undefined') ? marked.parseInline(s) : escapeHtml(s);
+                    return `<li>${rendered}</li>`;
+                })
+                .join('');
+            stepsHtml = `
+                <div class="recipe-section">
+                    <h5 class="section-title">Steps</h5>
+                    <ol class="steps-list" data-full="${encodeURIComponent(JSON.stringify(stepsArr))}">
+                        ${shortStepsHtml}
+                    </ol>
+                    ${hasMoreSteps ? `<button class="show-more-btn steps-more">Show ${stepsArr.length - 3} more</button>` : ''}
+                </div>
+            `;
+        }
+
+        card.innerHTML = `
+            <div class="recipe-header">
+                <h4 class="recipe-name">${escapeHtml(recipe.name || 'Recipe')}</h4>
+            </div>
+
+            ${ingredientsHtml}
+            ${stepsHtml}
+        `;
+
         elements.recipesList.appendChild(card);
-        
-        // Add event listeners for "show more" buttons
-        const ingredientMoreBtn = card.querySelector('.ingredient-more');
-        if (ingredientMoreBtn) {
-            ingredientMoreBtn.addEventListener('click', function() {
-                const container = this.parentElement;
-                const fullList = JSON.parse(container.dataset.fullList);
-                container.innerHTML = fullList.map(ing => `
-                    <span class="ingredient-tag">${ing}</span>
-                `).join('');
-            });
-        }
-        
-        const stepsMoreBtn = card.querySelector('.steps-more');
-        if (stepsMoreBtn) {
-            stepsMoreBtn.addEventListener('click', function() {
-                const container = this.previousElementSibling;
-                const fullList = JSON.parse(container.dataset.fullList);
-                container.innerHTML = fullList.map(step => `
-                    <li class="step-item">
-                        <span class="step-text">${step}</span>
-                    </li>
-                `).join('');
-                this.remove();
-            });
-        }
+        setupExpandButtons(card);
     });
 }
 
-// Add fade-in animation
-const style = document.createElement('style');
-style.textContent = `
+// Setup expand buttons with markdown handling
+function setupExpandButtons(card) {
+    // Ingredients expand
+    const ingBtn = card.querySelector(".ingredient-more");
+    if (ingBtn) {
+        ingBtn.onclick = () => {
+            const container = ingBtn.parentElement;
+            const fullList = JSON.parse(decodeURIComponent(container.dataset.full || '[]'));
+            container.innerHTML = fullList.map(i => `<span class="ingredient-tag">${escapeHtml(i)}</span>`).join('');
+        };
+    }
+
+    // Steps expand (only applies when steps were short-array style)
+    const stepBtn = card.querySelector(".steps-more");
+    if (stepBtn) {
+        stepBtn.onclick = () => {
+            const ol = stepBtn.previousElementSibling;
+            const fullList = JSON.parse(decodeURIComponent(ol.dataset.full || '[]'));
+            if (typeof marked !== 'undefined') {
+                ol.innerHTML = fullList.map(s => `<li>${marked.parseInline(s)}</li>`).join('');
+            } else {
+                ol.innerHTML = fullList.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+            }
+            stepBtn.remove();
+        };
+    }
+}
+
+// small helper to escape HTML when marked is not available or for text content
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+
+// Fade Animations
+const styleElement = document.createElement('style');
+styleElement.textContent = `
     @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 `;
-document.head.appendChild(style);
+document.head.appendChild(styleElement);
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
-}
+
+// Start Application
+document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', init)
+    : init();
