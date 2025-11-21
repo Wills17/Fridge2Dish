@@ -153,7 +153,7 @@ async def upload_image(
         - Ingredients list with quantities
         - 6-10 concise steps
         - Optional fun tips or variations
-        Make it easy to follow and appetizing!// Handle all 
+        Make it easy to follow and appetizing!
 
         Do not include any lines like "Sure! Here's a recipe...", "Here's a simple..." or similar.
         Return results in markdown format.
