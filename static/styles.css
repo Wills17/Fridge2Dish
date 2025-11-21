@@ -384,6 +384,7 @@ body {
     color: var(--foreground);
 }
 
+/* Base confidence bar container */
 .confidence-badge {
     display: inline-flex;
     align-items: center;
@@ -395,7 +396,6 @@ body {
     border-radius: 9999px;
 }
 
-/* Base confidence bar container */
 .confidence-bar {
     width: 100%;
     height: 8px;
