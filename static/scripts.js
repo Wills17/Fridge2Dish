@@ -231,13 +231,12 @@ function displayIngredients(ingredients) {
     ingredients.forEach((ingredient, index) => {
         const item = document.createElement('div');
         item.className = 'ingredient-item';
-        item.style.animation = `fadeIn 0.4s ease-out ${index * 0.08}s forwards`;
+        item.style.animation = `fadeIn 1s ease-out ${index * 0.08}s forwards`;
 
-        // Force confidence to number
+        // Make sure confidence is numerical
         const confidence = Number(ingredient.confidence);
-        console.log(confidence)
 
-        // Determine bar color
+        // Determine bar & badge color
         let barColor;
         if (confidence >= 0.7) barColor = "#2ecc71";      // green
         else if (confidence >= 0.4) barColor = "#f1c40f"; // yellow
@@ -247,7 +246,11 @@ function displayIngredients(ingredients) {
             <div class="ingredient-header">
                 <div class="ingredient-info">
                     <span class="ingredient-name">${ingredient.name}</span>
-                    <span class="confidence-badge">
+                    <span class="confidence-badge"
+                        style="
+                            background: ${barColor};
+                            color: ${confidence >= 0.4 ? '#000' : '#fff'};
+                        ">
                         ${Math.round(confidence * 100)}% confidence
                     </span>
                 </div>
@@ -266,12 +269,14 @@ function displayIngredients(ingredients) {
 
         elements.ingredientsList.appendChild(item);
 
+        // Animate bar fill
         requestAnimationFrame(() => {
             const fill = item.querySelector('.confidence-fill');
             fill.style.width = `${confidence * 100}%`;
         });
     });
 }
+
 
 
 
@@ -283,7 +288,7 @@ function displayRecipes(recipes) {
     recipes.forEach((recipe, index) => {
         const card = document.createElement('div');
         card.className = 'recipe-card';
-        card.style.animation = `fadeIn 0.5s ease-out ${index * 0.15}s forwards`;
+        card.style.animation = `fadeIn 1s ease-out ${index * 0.15}s forwards`;
 
         // Short / long ingredients
         const shortIngredients = (recipe.ingredients || [])
