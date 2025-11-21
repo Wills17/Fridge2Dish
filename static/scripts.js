@@ -229,35 +229,50 @@ function displayIngredients(ingredients) {
     elements.ingredientsList.innerHTML = '';
 
     ingredients.forEach((ingredient, index) => {
-        // Handle all 
-        if (!ingredient || typeof ingredient !== "object") {
-            ingredient = { name: String(ingredient), confidence: 0 };
-        }
-
-        const name = ingredient.name ?? "Unknown";
-        const confidence = ingredient.confidence ?? 0;
-
         const item = document.createElement('div');
         item.className = 'ingredient-item';
-        item.style.animation = `fadeIn 0.5s ease-out ${index * 0.1}s forwards`;
+        item.style.animation = `fadeIn 0.4s ease-out ${index * 0.08}s forwards`;
+
+        // Force confidence to number
+        const confidence = Number(ingredient.confidence);
+        console.log(confidence)
+
+        // Determine bar color
+        let barColor;
+        if (confidence >= 0.7) barColor = "#2ecc71";      // green
+        else if (confidence >= 0.4) barColor = "#f1c40f"; // yellow
+        else barColor = "#e74c3c";                        // red
 
         item.innerHTML = `
             <div class="ingredient-header">
                 <div class="ingredient-info">
-                    <span class="ingredient-name">${name}</span>
+                    <span class="ingredient-name">${ingredient.name}</span>
                     <span class="confidence-badge">
                         ${Math.round(confidence * 100)}% confidence
                     </span>
                 </div>
             </div>
+
             <div class="confidence-bar">
-                <div class="confidence-fill" style="width: ${confidence * 100}%"></div>
+                <div class="confidence-fill"
+                    style="
+                        width: 0%;
+                        background: ${barColor};
+                        transition: width 0.9s ease-out;
+                    ">
+                </div>
             </div>
         `;
 
         elements.ingredientsList.appendChild(item);
+
+        requestAnimationFrame(() => {
+            const fill = item.querySelector('.confidence-fill');
+            fill.style.width = `${confidence * 100}%`;
+        });
     });
 }
+
 
 
 // Rendering Recipes UI (Markdown support)
