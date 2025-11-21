@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configure Gemini client
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
 
 # generate recipe function
 def generate_recipe(ingredients):
@@ -22,7 +23,7 @@ def generate_recipe(ingredients):
     - Recipe name
     - One-sentence description
     - Ingredients list with quantities
-    - 3-6 concise steps
+    - 6-10 concise steps
     - Optional fun tips or variations
     Make it easy to follow and appetizing!
 
