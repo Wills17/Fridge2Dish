@@ -1,7 +1,10 @@
 streamlit
-tensorflow>=2.11
+fastapi
+uvicorn[standard]
+tensorflow-cpu==2.13.0
+transformers==4.39.3
+torch==2.1.0
 pillow
+python-dotenv
+google-generativeai
 numpy
-opencv-python
-tqdm
-gdown
