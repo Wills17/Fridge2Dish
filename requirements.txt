@@ -1,7 +1,7 @@
 streamlit
 fastapi
 uvicorn[standard]
-tensorflow-cpu==2.13.0
+tensorflow
 transformers==4.39.3
 torch==2.1.0
 pillow
