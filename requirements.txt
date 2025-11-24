@@ -2,9 +2,11 @@ streamlit
 fastapi
 uvicorn[standard]
 tensorflow
-transformers==4.39.3
-torch==2.1.0
+transformers
+torch
 pillow
 python-dotenv
 google-generativeai
 numpy
+python-multipart
+llama_cpp-python
