@@ -16,6 +16,13 @@ Upload a picture → Get ingredient predictions → Choose AI or GPT-2 recipe ge
 This Space runs fully on CPU using **FastAPI**, **TensorFlow**, and **HuggingFace Transformers**.
 
 ---
+## Live Demo
+
+Try it live here 👉 [**Fridge2Dish**](https://wills17-fridge2dish.hf.space/)
+
+> You’ll need your own **Gemini API Key** for better **recipe** quality.
+
+---
 
 ## Features
 
@@ -43,7 +50,7 @@ Recipes include:
 
 ## Model Details
 
-- **Ingredient Detector**: Keras CNN model (`ingredient_model_3.h5`)  
+- **Ingredient Detector**: Keras CNN model (`ingredient_model.h5`)  
 - **Classes**: Loaded dynamically from `dataset/dataset_2/train/*`  
 - **Top-K filtering** with confidence scores  
 - **Image preprocessing**: 224×224 RGB  
