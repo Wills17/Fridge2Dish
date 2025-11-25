@@ -1,4 +1,3 @@
-streamlit
 fastapi
 uvicorn[standard]
 tensorflow
@@ -9,4 +8,4 @@ python-dotenv
 google-generativeai
 numpy
 python-multipart
-llama_cpp-python
+accelerate
