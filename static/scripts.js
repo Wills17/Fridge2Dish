@@ -25,6 +25,9 @@ const elements = {
     darkModeToggle: document.getElementById('darkModeToggle')
 };
 
+// Global abort controller
+let abortController = null;  
+
 // Initialize app
 function init() {
     setupEventListeners();
@@ -122,9 +125,16 @@ async function handleMissingApiKeyWarning() {
     }
 }
 
-function updateScanButton(loading) {
-    elements.scanButton.disabled = loading;
-    elements.scanButtonText.textContent = loading ? "Processing..." : "Scan Ingredients";
+function updateScanButton(isProcessing) {
+    elements.scanButton.disabled = false; 
+    
+    if (isProcessing) {
+        elements.scanButtonText.textContent = "Cancel";
+        elements.scanButton.classList.add("cancel-mode");
+    } else {
+        elements.scanButtonText.textContent = "Scan Ingredients";
+        elements.scanButton.classList.remove("cancel-mode");
+    }
 }
 
 // Image Scan and Backend Processing
@@ -133,8 +143,19 @@ async function handleScan() {
 
     await handleMissingApiKeyWarning();
 
+    // Reset previous controller
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
     state.isProcessing = true;
     updateScanButton(true);
+
+    // Show Cancel button
+    elements.scanButtonText.textContent = "Cancel";
+    elements.scanButton.onclick = () => {
+        abortController.abort();
+        console.log("User cancelled the request");
+    };
 
     // Reset UI
     elements.ingredientsList.innerHTML = "";
@@ -142,37 +163,41 @@ async function handleScan() {
     elements.resultsSection.style.display = "block";
 
     try {
-        // Detect ingredients
         const blob = await (await fetch(state.uploadedImage)).blob();
+
+        // Detect ingredients
         const detectForm = new FormData();
         detectForm.append("file", new File([blob], "image.jpg", { type: blob.type }));
 
         const detectResponse = await fetch("/detect-ingredients/", {
             method: "POST",
-            body: detectForm
+            body: detectForm,
+            signal: abortController.signal
         });
 
-        if (!detectResponse.ok) throw new Error("Detection failed");
+        if (!detectResponse.ok) {
+            if (abortController.signal.aborted) throw new Error("cancelled");
+            throw new Error("Detection failed");
+        }
 
         const { ingredients } = await detectResponse.json();
 
-        // Display detected ingredients
-        state.detectedIngredients = ingredients.map(item => ({
-            name: item.name,
-            confidence: item.confidence
+        state.detectedIngredients = ingredients.map(i => ({
+            name: i.name,
+            confidence: i.confidence
         }));
 
         displayIngredients(state.detectedIngredients);
 
-        // Show "thinking" card
+        // Show thinking card
         const thinkingCard = document.createElement("div");
         thinkingCard.className = "recipe-card";
         thinkingCard.innerHTML = `
             <div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
             <div class="recipe-section">
                 <p style="text-align:center; padding:2rem; color:var(--text-secondary)">
-                    <em>Chef is thinking of something delicious...</em><br><br>
-                    <span style="font-size:2rem">Cooking</span>
+                    <em>Chef is thinking...</em><br><br>
+                    This may take up to 60 seconds if you didn't use Gemini API key.
                 </p>
             </div>`;
         elements.recipesList.appendChild(thinkingCard);
@@ -185,10 +210,14 @@ async function handleScan() {
 
         const recipeResponse = await fetch("/generate-recipe/", {
             method: "POST",
-            body: recipeForm
+            body: recipeForm,
+            signal: abortController.signal
         });
 
-        if (!recipeResponse.ok) throw new Error("Recipe generation failed");
+        if (!recipeResponse.ok) {
+            if (abortController.signal.aborted) throw new Error("cancelled");
+            throw new Error("Recipe generation failed");
+        }
 
         const { recipe } = await recipeResponse.json();
 
@@ -200,14 +229,27 @@ async function handleScan() {
             </div>`;
 
     } catch (err) {
-        console.error(err);
-        elements.recipesList.innerHTML = `<div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
-            <h4>Failed to generate recipe</h4>
-            <p>Try again or add a Gemini API key for better results.</p>
-        </div>`;
+        if (err.message === "cancelled" || abortController.signal.aborted) {
+            elements.recipesList.innerHTML = `
+                <div class="recipe-card" style="text-align:center; padding:2rem; color:var(--text-secondary)">
+                    <p>Cancelled by user</p>
+                    <button onclick="handleScan()" class="btn-primary">Try Again</button>
+                </div>`;
+        } else {
+            console.error(err);
+            elements.recipesList.innerHTML = `
+                <div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
+                    <h4>Failed</h4>
+                    <p>Try again or add a Gemini API key</p>
+                </div>`;
+        }
     } finally {
         state.isProcessing = false;
         updateScanButton(false);
+
+        // Restore original scan button
+        elements.scanButtonText.textContent = "Scan Ingredients";
+        elements.scanButton.onclick = handleScan;
     }
 }
 
