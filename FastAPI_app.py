@@ -6,6 +6,7 @@ import io
 import time
 import traceback
 import threading
+import signal
 
 import uvicorn
 import numpy as np
@@ -22,10 +23,6 @@ import tensorflow as tf
 import google.generativeai as genai
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-
-
-
-# CONFIGURATION
 
 # Ingredient model (load once)
 MODEL_PATH = "models/ingredient_model.h5"
@@ -47,12 +44,10 @@ else:
         'pineapple', 'pomegranate', 'potato', 'raddish', 'soy beans', 'spinach', 'sweetcorn',
         'sweetpotato', 'tomato', 'turnip', 'watermelon'
     ]
-    
-# Get HF token
-hf_token = os.getenv("HF_TOKEN")
 
-if not hf_token:
-    raise ValueError("Token not found in environment variable 'HF_TOKEN'.")
+# Timeout handler
+def timeout_handler(signum, frame):
+    raise TimeoutError("Model load timed out after 300s")
 
 
 # Thread-safe lazy loading
@@ -60,59 +55,57 @@ _lock = threading.Lock()
 _tokenizer = None
 _model = None
 
-def load_gemma2_2b():
+def load_Qwen():
     global _tokenizer, _model
     if _model is not None:
         return _tokenizer, _model
-
+    
     with _lock:
         if _model is not None:
             return _tokenizer, _model
-
-        print("\n🔵 [Fallback] Loading Gemma-2-2B-it 4-bit")
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_quant_type="nf4"
-        )
-
-        _tokenizer = AutoTokenizer.from_pretrained("google/gemma-2-2b-it", token=hf_token)
-        _model = AutoModelForCausalLM.from_pretrained(
-            "google/gemma-2-2b-it",
-            device_map="auto",    
-            quantization_config=quantization_config,
-            torch_dtype=torch.float16,
-            trust_remote_code=True
-        )
-        print("\n🟢 [Fallback] Gemma-2-2B ready!")
-        return _tokenizer, _model
-
-def generate_recipe_gemma(ingredient_names):
-    tokenizer, model = load_gemma2_2b()
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(300)  # 5 min timeout
+        try:
+            print("\n🔵 [Fallback] Loading Qwen2.5-1.5B-Instruct")
+            _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", trust_remote_code=True)
+            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype=torch.float16,)
+            print("\n🟢 [Fallback] Qwen ready!")
+            return _tokenizer, _model
+        
+        except TimeoutError:
+            print("\n🔴 [Fallback] Qwen load timed out.")
+            signal.alarm(0)
+            raise RuntimeError("\n🔴 Model load failed.")
     
-    prompt = f"""<start_of_turn>user
-        You are an AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
-        Include:
-        - Recipe name
-        - One-sentence description
-        - Ingredients list with quantities
-        - 6-10 concise steps
-        - Optional tips
-        RETURN RESULT IN MARKDOWN FORMAT ONLY.<end_of_turn>
-        <start_of_turn>model
-        """
 
+def generate_recipe_qwen(ingredient_names):
+    tokenizer, model = load_Qwen() 
+    
+    prompt = f"""
+            You are an AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
+            Include:
+            - Recipe name
+            - One-sentence description
+            - Ingredients list with quantities
+            - 6-10 concise steps
+            - Optional tips
+            RETURN RESULT IN MARKDOWN FORMAT ONLY.
+            """
+        
     inputs = tokenizer(prompt, return_tensors="pt")
     outputs = model.generate(
         inputs.input_ids,
         max_new_tokens=512,
-        temperature=0.8,
+        temperature=0.7,
         top_p=0.9,
         do_sample=True
     )
+    
     recipe_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
     # Strip the prompt part
-    return recipe_text.split("<start_of_turn>model")[-1].strip()
+    return recipe_text.split("Assistant:")[-1].strip() or recipe_text.split("FORMAT ONLY.")[-1].strip()
+    
+    
 
 
 # Infer uploaded image function
@@ -196,25 +189,26 @@ async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(al
                 RETURN RESULT IN MARKDOWN FORMAT ONLY.
                 """
 
-                print("Trying Gemini...")
+                print("\n🟡 Trying Gemini...")
                 response = model.generate_content(prompt)
                 recipe_text = response.text.strip()
-                print("Gemini succeeded.")
+                print("\n🟢 Gemini succeeded.")
 
             except Exception as e_gemini:
                 print("Gemini failed:", e_gemini)
                 try:
-                    recipe_text = generate_recipe_gemma(ingredient_names)
+                    recipe_text = generate_recipe_qwen(ingredient_names)
                 except Exception as e_local1:
-                    print("Gemma local failed:", e_local1)
+                    print("\n🔴 Qwen local failed:", e_local1)
                     raise e_local1
 
         else:
             try:
-                print("\n🟡 No API key → Using Gemma fallback.")
-                recipe_text = generate_recipe_gemma(ingredient_names)
+                print("\n🟡 No API key → Using Qwen fallback.")
+                recipe_text = generate_recipe_qwen(ingredient_names)
             except Exception as e_local2:
-                print("Gemma local failed:", e_local2)
+                print("\n🔴 Qwen local failed:", e_local2)
+                recipe_text = "# Sorry!\n\nThe free AI model is taking too long to load right now.\n\nPlease consider adding your Gemini API key for instant recipes.\n\n### Thank you for understanding!"
                 raise e_local2
 
         return {"ingredients": ingredients, "recipe": recipe_text}
