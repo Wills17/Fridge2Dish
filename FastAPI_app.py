@@ -163,23 +163,34 @@ def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-# Upload-image route
-@app.post("/upload-image/")
-async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(alias="api_key", default="")):
+# Ingredient detection route
+@app.post("/detect-ingredients/")
+async def detect_ingredients(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        raise HTTPException(status_code=400, detail="Invalid image format.")
+    
+    start = time.time()
+    img_bytes = await file.read()
+    pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+    ingredients = infer_image(pil_img)
+    end = time.time()
+    print(f"Detected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)")
+    
+    return {"ingredients": ingredients}
+
+
+# Generate recipe route
+@app.post("/generate-recipe/")
+async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form(alias="api_key", default="")):
     try:
-        if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-            raise HTTPException(status_code=400, detail="Invalid image format.")
-
-        img_bytes = await file.read()
-        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-
+        ingredient_names = [ing.strip() for ing in ingredients.split(",") if ing.strip()]
+        print(f"\nGenerating recipe for ingredients: {ingredient_names} in `generate-recipe route`")
+        if not ingredient_names:
+            raise HTTPException(status_code=400, detail="No ingredients provided.")
+        
         start = time.time()
-        ingredients = infer_image(pil_img)
-        end = time.time()
-        print(f"Detected ingredients: {ingredients} (took {end-start:.2f}s)")
-
-        ingredient_names = [i["name"] for i in ingredients]
-
+        
         recipe_text = None
         api_key = (user_api_key or "").strip()
 
@@ -203,8 +214,9 @@ async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(al
                 response = model.generate_content(prompt)
                 recipe_text = response.text.strip()
                 print("\n🟢 Gemini succeeded.")
+                
                 end = time.time()
-                print(f"Time taken: {end-start:.2f}s")
+                print(f"\n⌛ Time taken: {end-start:.2f}s")
 
             except Exception as e_gemini:
                 print("Gemini failed:", e_gemini)
@@ -219,21 +231,20 @@ async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(al
                 print("\n🟡 No API key → Using Qwen fallback.")
                 recipe_text = generate_recipe_qwen(ingredient_names)
                 print("\n🟢 Qwen succeeded.")
-                end = time.time()
-                print(f"Time taken: {end-start:.2f}s")
                 
             except Exception as e_local2:
                 print("\n🔴 Qwen local failed:", e_local2)
                 recipe_text = "# Sorry!\n\nThe free AI model is taking too long to load right now.\n\nPlease consider adding your Gemini API key for instant recipes.\n\n### Thank you for understanding!"
                 raise e_local2
 
-        return {"ingredients": ingredients, "recipe": recipe_text}
+        return {"recipe": recipe_text}
 
     except HTTPException:
         raise
     except Exception as e:
         traceback.print_exc()
-        
+
+
         
 # Health check
 @app.get("/health")
