@@ -389,7 +389,7 @@ function setupExpandButtons(card) {
     }
 }
 
-// small helper to escape HTML when marked is not available or for text content
+// escape HTML when marked is not available or for text content
 function escapeHtml(str) {
     if (!str) return '';
     return str
