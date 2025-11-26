@@ -6,7 +6,6 @@ import io
 import time
 import traceback
 import threading
-import signal
 
 import uvicorn
 import numpy as np
@@ -21,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import torch
 import tensorflow as tf
 import google.generativeai as genai
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 # Ingredient model (load once)
@@ -63,8 +62,6 @@ def load_Qwen():
     with _lock:
         if _model is not None:
             return _tokenizer, _model
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(300)  # 5 min timeout
         try:
             print("\n🔵 [Fallback] Loading Qwen2.5-1.5B-Instruct")
             _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", trust_remote_code=True)
@@ -74,38 +71,51 @@ def load_Qwen():
         
         except TimeoutError:
             print("\n🔴 [Fallback] Qwen load timed out.")
-            signal.alarm(0)
             raise RuntimeError("\n🔴 Model load failed.")
     
 
 def generate_recipe_qwen(ingredient_names):
     tokenizer, model = load_Qwen() 
     
-    prompt = f"""
-            You are an AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
-            Include:
-            - Recipe name
-            - One-sentence description
-            - Ingredients list with quantities
-            - 6-10 concise steps
-            - Optional tips
-            RETURN RESULT IN MARKDOWN FORMAT ONLY.
-            """
+    messages = [
+        {"role": "system", "content": "You are a helpful chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
+        {"role": "user", "content": f"""Create a delicious recipe using only these ingredients: {', '.join(ingredient_names)}
+
+        Return ONLY clean markdown with:
+        - Recipe title (## Title)
+        - One-sentence description
+        - Ingredients list with quantities
+        - Numbered steps
+        - Optional tip"""}
+            ]
         
-    inputs = tokenizer(prompt, return_tensors="pt")
-    outputs = model.generate(
+    # Use Qwen chat template
+    input_text = tokenizer.apply_chat_template(
+        messages, 
+        tokenize=False, 
+        add_generation_prompt=True)
+    
+    inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
+    
+    output = model.generate(
         inputs.input_ids,
-        max_new_tokens=512,
+        max_new_tokens=500,
         temperature=0.7,
+        do_sample=True,
         top_p=0.9,
-        do_sample=True
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.eos_token_id
     )
     
-    recipe_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
     # Strip the prompt part
-    return recipe_text.split("Assistant:")[-1].strip() or recipe_text.split("FORMAT ONLY.")[-1].strip()
+    response = tokenizer.decode(output[0], skip_special_tokens=True)
+    recipe_text = response.split("assistant")[-1].strip()
     
-    
+    # Final cleanup
+    if "<|" in recipe_text:
+        recipe_text = recipe_text.split("<|")[0].strip()
+        
+    return recipe_text
 
 
 # Infer uploaded image function
@@ -193,6 +203,8 @@ async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(al
                 response = model.generate_content(prompt)
                 recipe_text = response.text.strip()
                 print("\n🟢 Gemini succeeded.")
+                end = time.time()
+                print(f"Time taken: {end-start:.2f}s")
 
             except Exception as e_gemini:
                 print("Gemini failed:", e_gemini)
@@ -206,6 +218,10 @@ async def upload_image(file: UploadFile = File(...), user_api_key: str = Form(al
             try:
                 print("\n🟡 No API key → Using Qwen fallback.")
                 recipe_text = generate_recipe_qwen(ingredient_names)
+                print("\n🟢 Qwen succeeded.")
+                end = time.time()
+                print(f"Time taken: {end-start:.2f}s")
+                
             except Exception as e_local2:
                 print("\n🔴 Qwen local failed:", e_local2)
                 recipe_text = "# Sorry!\n\nThe free AI model is taking too long to load right now.\n\nPlease consider adding your Gemini API key for instant recipes.\n\n### Thank you for understanding!"
