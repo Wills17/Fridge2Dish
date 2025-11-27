@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y git build-essential
 COPY . .
 
 # install Python deps
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 
 ENV PORT=7860

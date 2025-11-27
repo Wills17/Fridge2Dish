@@ -194,7 +194,7 @@ async function handleScan() {
         card.className = "recipe-card";
         card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
             <div class="recipe-section"><p style="text-align:center;padding:2rem">
-                <em>Chef is cooking...</em><br><br>Up to 60s without API key
+                <em>Chef is cooking...</em><br><br>Might take up to 60 seconds without API key
             </p></div>`;
         elements.recipesList.appendChild(card);
         elements.recipesSection.style.display = "block";
@@ -204,18 +204,18 @@ async function handleScan() {
         recipeForm.append("ingredients", state.detectedIngredients.map(i => i.name).join(", "));
         recipeForm.append("api_key", state.geminiApiKey.trim());
 
-        const recipeRes = await fetch("/generate-recipe/", {
+        const recipeResponse = await fetch("/generate-recipe/", {
             method: "POST",
             body: recipeForm,
             signal: abortController.signal
         });
 
-        if (!recipeRes.ok) {
+        if (!recipeResponse.ok) {
             if (abortController.signal.aborted) throw new Error("cancelled");
             throw new Error("Recipe failed");
         }
 
-        const { recipe } = await recipeRes.json();
+        const { recipe } = await recipeResponse.json();
         card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
             <div class="recipe-section"><div class="recipe-markdown">${marked.parse(recipe)}</div></div>`;
 
