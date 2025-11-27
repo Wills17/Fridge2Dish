@@ -126,38 +126,39 @@ async function handleMissingApiKeyWarning() {
 }
 
 function updateScanButton(isProcessing) {
-    elements.scanButton.disabled = false; 
-    
+    elements.scanButton.disabled = false;
+
     if (isProcessing) {
+        elements.scanButton.classList.add("processing");
         elements.scanButtonText.textContent = "Cancel";
-        elements.scanButton.classList.add("cancel-mode");
     } else {
+        elements.scanButton.classList.remove("processing");
         elements.scanButtonText.textContent = "Scan Ingredients";
-        elements.scanButton.classList.remove("cancel-mode");
     }
 }
 
 // Image Scan and Backend Processing
 async function handleScan() {
-    if (!state.uploadedImage) return alert("Upload an image first");
+    // If already running → act as Cancel button
+    if (state.isProcessing) {
+        if (abortController) {
+            abortController.abort();
+            console.log("Cancelled by user");
+        }
+        return;
+    }
 
     await handleMissingApiKeyWarning();
 
     // Reset previous controller
-    if (abortController) abortController.abort();
     abortController = new AbortController();
-
     state.isProcessing = true;
-    updateScanButton(true);
 
-    // Show Cancel button
+    // Show Cancel
     elements.scanButtonText.textContent = "Cancel";
-    elements.scanButton.onclick = () => {
-        abortController.abort();
-        console.log("User cancelled the request");
-    };
+    elements.scanButton.classList.add("cancel-mode");
 
-    // Reset UI
+    // Reset results
     elements.ingredientsList.innerHTML = "";
     elements.recipesList.innerHTML = "";
     elements.resultsSection.style.display = "block";
@@ -181,7 +182,6 @@ async function handleScan() {
         }
 
         const { ingredients } = await detectResponse.json();
-
         state.detectedIngredients = ingredients.map(i => ({
             name: i.name,
             confidence: i.confidence
@@ -190,66 +190,54 @@ async function handleScan() {
         displayIngredients(state.detectedIngredients);
 
         // Show thinking card
-        const thinkingCard = document.createElement("div");
-        thinkingCard.className = "recipe-card";
-        thinkingCard.innerHTML = `
-            <div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
-            <div class="recipe-section">
-                <p style="text-align:center; padding:2rem; color:var(--text-secondary)">
-                    <em>Chef is thinking...</em><br><br>
-                    This may take up to 60 seconds if you didn't use Gemini API key.
-                </p>
-            </div>`;
-        elements.recipesList.appendChild(thinkingCard);
+        const card = document.createElement("div");
+        card.className = "recipe-card";
+        card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
+            <div class="recipe-section"><p style="text-align:center;padding:2rem">
+                <em>Chef is cooking...</em><br><br>Up to 60s without API key
+            </p></div>`;
+        elements.recipesList.appendChild(card);
         elements.recipesSection.style.display = "block";
 
-        // Generate recipe in background
+        // 2. Generate recipe
         const recipeForm = new FormData();
         recipeForm.append("ingredients", state.detectedIngredients.map(i => i.name).join(", "));
         recipeForm.append("api_key", state.geminiApiKey.trim());
 
-        const recipeResponse = await fetch("/generate-recipe/", {
+        const recipeRes = await fetch("/generate-recipe/", {
             method: "POST",
             body: recipeForm,
             signal: abortController.signal
         });
 
-        if (!recipeResponse.ok) {
+        if (!recipeRes.ok) {
             if (abortController.signal.aborted) throw new Error("cancelled");
-            throw new Error("Recipe generation failed");
+            throw new Error("Recipe failed");
         }
 
-        const { recipe } = await recipeResponse.json();
-
-        // Replace thinking card with real recipe
-        thinkingCard.innerHTML = `
-            <div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
-            <div class="recipe-section">
-                <div class="recipe-markdown">${marked.parse(recipe)}</div>
-            </div>`;
+        const { recipe } = await recipeRes.json();
+        card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
+            <div class="recipe-section"><div class="recipe-markdown">${marked.parse(recipe)}</div></div>`;
 
     } catch (err) {
         if (err.message === "cancelled" || abortController.signal.aborted) {
-            elements.recipesList.innerHTML = `
-                <div class="recipe-card" style="text-align:center; padding:2rem; color:var(--text-secondary)">
-                    <p>Cancelled by user</p>
-                    <button onclick="handleScan()" class="btn-primary">Try Again</button>
-                </div>`;
+            elements.recipesList.innerHTML = `<div class="recipe-card" style="text-align:center;padding:2rem">
+                <p>You cancelled the operation.</p>
+                <button onclick="handleScan()" class="scan-button">
+                    <span id="scanButtonText">Try Again</span>
+                </button>
+            </div>`;
         } else {
             console.error(err);
-            elements.recipesList.innerHTML = `
-                <div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
-                    <h4>Failed</h4>
-                    <p>Try again or add a Gemini API key</p>
-                </div>`;
+            elements.recipesList.innerHTML = `<div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
+                <h4>Error</h4><p>Try again or add Gemini API key</p>
+            </div>`;
         }
     } finally {
         state.isProcessing = false;
-        updateScanButton(false);
-
-        // Restore original scan button
+        abortController = null;
         elements.scanButtonText.textContent = "Scan Ingredients";
-        elements.scanButton.onclick = handleScan;
+        elements.scanButton.classList.remove("cancel-mode");
     }
 }
 

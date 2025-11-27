@@ -313,8 +313,22 @@ body {
 }
 
 .scan-button.processing {
-    background: var(--muted);
-    color: var(--muted-foreground);
+    background: #e74c3c !important;
+    color: white !important;
+    opacity: 1 !important;
+    animation: pulse 1.8s infinite;
+    cursor: pointer !important;
+}
+
+.scan-button.processing:hover {
+    background: #c0392b !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(231, 76, 60, 0.4);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
 }
 
 /* Results Section */
