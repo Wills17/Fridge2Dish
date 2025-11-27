@@ -141,7 +141,7 @@ def infer_image(pil_image):
 app = FastAPI(
     title="Fridge2Dish",
     description="Upload an image → Detect ingredients → Generate recipes",
-    version="3.0.0"
+    version="4.0.0"
 )
 
 # static and templates
