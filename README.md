@@ -1,8 +1,8 @@
 ---
 title: Fridge2Dish
 emoji: 🍳
-colorFrom: orange
-colorTo: red
+colorFrom: blue
+colorTo: green
 sdk: docker
 short_description: A cooking assistant that turns ingredients to recipes.
 pinned: false
