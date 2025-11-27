@@ -82,7 +82,7 @@ def generate_recipe_qwen(ingredient_names):
         {"role": "user", "content": f"""Create a delicious recipe using only these ingredients: {', '.join(ingredient_names)}
 
         Return ONLY clean markdown with:
-        - Recipe title (## Title)
+        - Recipe title (# Title)
         - One-sentence description
         - Ingredients list with quantities
         - Numbered steps
@@ -166,7 +166,7 @@ def home(request: Request):
 # Ingredient detection route
 @app.post("/detect-ingredients/")
 async def detect_ingredients(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+    if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         raise HTTPException(status_code=400, detail="Invalid image format.")
     
     start = time.time()
@@ -185,7 +185,6 @@ async def detect_ingredients(file: UploadFile = File(...)):
 async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form(alias="api_key", default="")):
     try:
         ingredient_names = [ing.strip() for ing in ingredients.split(",") if ing.strip()]
-        print(f"\nGenerating recipe for ingredients: {ingredient_names} in `generate-recipe route`")
         if not ingredient_names:
             raise HTTPException(status_code=400, detail="No ingredients provided.")
         
@@ -202,7 +201,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 prompt = f"""
                 You are an AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
                 Include:
-                - Recipe name
+                - Recipe name (# Title)
                 - One-sentence description
                 - Ingredients list with quantities
                 - 6-10 concise steps
@@ -216,15 +215,16 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 print("\n🟢 Gemini succeeded.")
                 
                 end = time.time()
-                print(f"\n⌛ Time taken: {end-start:.2f}s")
-
+                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
+                
             except Exception as e_gemini:
-                print("Gemini failed:", e_gemini)
-                try:
-                    recipe_text = generate_recipe_qwen(ingredient_names)
-                except Exception as e_local1:
-                    print("\n🔴 Qwen local failed:", e_local1)
-                    raise e_local1
+                print("\n🔴 Gemini failed:", e_gemini)
+                print("\n🟡 Trying Qwen fallback...")
+                recipe_text = generate_recipe_qwen(ingredient_names)
+                print("\n🟢 Qwen succeeded.")
+                
+                end = time.time()
+                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
 
         else:
             try:
@@ -232,8 +232,11 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 recipe_text = generate_recipe_qwen(ingredient_names)
                 print("\n🟢 Qwen succeeded.")
                 
+                end = time.time()
+                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
+                
             except Exception as e_local2:
-                print("\n🔴 Qwen local failed:", e_local2)
+                print("\n🔴 Qwen failed:", e_local2)
                 recipe_text = "# Sorry!\n\nThe free AI model is taking too long to load right now.\n\nPlease consider adding your Gemini API key for instant recipes.\n\n### Thank you for understanding!"
                 raise e_local2
 
