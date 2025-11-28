@@ -9,6 +9,7 @@ import threading
 
 import uvicorn
 import numpy as np
+import cv2 as cv
 from PIL import Image
 from fastapi import FastAPI, Form, UploadFile, File, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -20,29 +21,50 @@ from fastapi.middleware.cors import CORSMiddleware
 import torch
 import tensorflow as tf
 import google.generativeai as genai
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoProcessor
+from ultralytics import YOLO
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-# Ingredient model (load once)
-# MODEL_PATH = "models/ingredient_model_2.h5"
-# if not os.path.exists(MODEL_PATH):
-#     raise FileNotFoundError(f"Ingredient model not found at {MODEL_PATH}")
+# Load once
+_yolo_model = YOLO("yolov8l.pt")
 
-# MODEL = tf.keras.models.load_model(MODEL_PATH)
+# Might update later on...
+# Potential full list of COCO classes since using YOLOv8 pretrained on COCO
+FOOD_CLASS_NAMES = {
+    # Fruits
+    "banana": True, "apple": True, "orange": True, "lemon": True, "watermelon": True,
+    "grapes": True, "strawberry": True, "blueberry": True, "kiwi": True,
+
+    # Vegetables
+    "carrot": True, "broccoli": True, "cauliflower": True, "cucumber": True,
+    "tomato": True, "bell pepper": True, "hot pepper": True, "onion": True,
+    "garlic": True, "lettuce": True, "cabbage": True, "eggplant": True,
+    "avocado": True, "zucchini": True, "corn": True, "mushroom": True,
+
+    # Dairy & Eggs
+    "cheese": True, "milk": True, "yogurt": True, "butter": True,
+
+    # Proteins & Prepared
+    "egg": True, "sandwich": True, "pizza": True, "hot dog": True, "cake": True,
+    "donut": True,
+
+    # Containers & condiments that are almost always food-related in a fridge
+    "bottle": True,      # milk, juice, water, sauce
+    "wine glass": True,  # could hold yogurt or dessert
+    "cup": True,         # yogurt cups, pudding
+    "bowl": True,        # fruit bowls, salad bowls
+    "spoon": True,       # usually in yogurt or dessert
+    "fork": True,
+    "knife": True,      # rarely wrong in context
+
+    # Explicitly block non-food
+    "person": False, "chair": False, "tv": False, "laptop": False, "cell phone": False,
+    "book": False, "teddy bear": False, "potted plant": False, "vase": False,
+    "refrigerator": False, "oven": False, "microwave": False, "sink": False,
+    "clock": False, "suitcase": False, "backpack": False, "handbag": False,
+}
 
 
-# Class names
-if os.path.isdir("dataset/dataset_2/train"):
-    CLASS_NAMES = sorted(os.listdir("dataset/dataset_2/train"))
-    
-else:
-    CLASS_NAMES = [
-        'apple', 'banana', 'beetroot', 'bell pepper', 'cabbage', 'capsicum', 'carrot', 'cauliflower',
-        'chilli pepper', 'corn', 'cucumber', 'eggplant', 'garlic', 'ginger', 'grapes', 'jalepeno',
-        'kiwi', 'lemon', 'lettuce', 'mango', 'onion', 'orange', 'paprika', 'pear', 'peas',
-        'pineapple', 'pomegranate', 'potato', 'raddish', 'soy beans', 'spinach', 'sweetcorn',
-        'sweetpotato', 'tomato', 'turnip', 'watermelon'
-    ]
 
 # Timeout handler
 def timeout_handler(signum, frame):
@@ -53,35 +75,7 @@ def timeout_handler(signum, frame):
 _lock = threading.Lock()
 _tokenizer = None
 _model = None
-_florence_processor = None
-_florence_model = None
-_florence_lock = threading.Lock()
 
-
-# Florence2 detection first time function
-def load_florence2():
-    global _florence_processor, _florence_model
-    if _florence_model is not None:
-        return _florence_processor, _florence_model
-    
-    with _florence_lock:
-        if _florence_model is not None:
-            return _florence_processor, _florence_model
-        
-        try:
-            print("\n🔵 Loading Florence-2 for accurate detection...")
-            _florence_processor = AutoProcessor.from_pretrained("microsoft/Florence-2-base", trust_remote_code=True)
-            _florence_model = AutoModelForCausalLM.from_pretrained(
-                "microsoft/Florence-2-base",
-                torch_dtype=torch.float16,
-                attn_implementation="eager",
-                trust_remote_code=True)
-                    
-        except TimeoutError:
-            raise RuntimeError("\n🔴 [Fallback] Florence load timed out.")
-        
-        print("\n🟢 Florence-2 ready!\n")
-        return _florence_processor, _florence_model
 
 
 # Qwen fallback first time function
@@ -96,7 +90,7 @@ def load_Qwen():
         try:
             print("\n🔵 [Fallback] Loading Qwen2.5-1.5B-Instruct")
             _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", trust_remote_code=True)
-            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype=torch.float16,)
+            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype=torch.float16)
             print("\n🟢 [Fallback] Qwen ready!")
             return _tokenizer, _model
         
@@ -108,7 +102,7 @@ def generate_recipe_qwen(ingredient_names):
     tokenizer, model = load_Qwen() 
     
     messages = [
-        {"role": "system", "content": "You are a helpful chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
+        {"role": "system", "content": "You are a helpful 5 star chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
         {"role": "user", "content": f"""Create a delicious recipe using only these ingredients: {', '.join(ingredient_names)}
 
         Return ONLY clean markdown with:
@@ -148,74 +142,44 @@ def generate_recipe_qwen(ingredient_names):
     return recipe_text
 
 
-# Infer uploaded image function
+
+# YOLOv8 model for ingredient detection
 def infer_image(pil_image):
-    """
-    Returns a list of dicts: [{ "name": ing_1, "confidence": 0.xx }, ...]
-    """
-    img = pil_image.resize((224, 224))
-    arr = np.expand_dims(np.array(img) / 255.0, axis=0)
-    preds = MODEL.predict(arr)[0]
-    top_idxs = np.argsort(preds)[::-1][:3]
-    ingredients = []
-    for i in top_idxs:
-        ingredients.append({"name": CLASS_NAMES[i].capitalize(), "confidence": float(preds[i])})
+    
+    # Convert PIL → OpenCV format
+    open_cv_image = np.array(pil_image)
+    open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB → BGR
 
-    if not ingredients:
-        return [{"name": "Unknown", "confidence": 0.0}]
+    # Resize to 640x640, YOLOv8 default
+    img = cv.resize(open_cv_image, (640, 640))
 
-    return ingredients
+    # Inference with low threshold
+    results = _yolo_model(img, conf=0.2, iou=0.45, verbose=False)[0]
 
+    detected = []
 
-# Florence2 infer function
-def infer_image2(pil_image):
-    """
-    Florence-2 object detection — fixed for dtype mismatch.
-    """
-    processor, model = load_florence2()
-    
-    prompt = "<OD>"  # Object detection prompt
-    
-    # Process image
-    inputs = processor(text=prompt, images=pil_image, return_tensors="pt")
-    
-    # FIX: Force pixel_values to float16 to match model dtype
-    inputs["pixel_values"] = inputs["pixel_values"].to(torch.float16)
-    
-    # Generate with no_grad for efficiency
-    with torch.no_grad():
-        outputs = model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=100,
-            do_sample=False,
-            num_beams=3,
-        )
-    
-    # Decode output
-    generated_text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
-    
-    # Post-process to extract objects
-    result = processor.post_process_generation(
-        generated_text, 
-        task=prompt, 
-        image_size=(pil_image.width, pil_image.height)
-    )
-    
-    # Extract labels (top 5)
-    detected = result["<OD>"]["labels"]
-    print(f"Detected raw labels: {detected}")
-    ingredients = []
-    for label in detected[:5]:
-        ingredients.append({
-            "name": label.strip().capitalize(),
-            "confidence": 0.95
-        })
-    
-    if not ingredients:
-        return [{"name": "Various fruits & vegetables", "confidence": 0.7}]
-    
-    return ingredients
+    if results.boxes is not None and len(results.boxes) > 0:
+        for box in results.boxes:
+            cls_id = int(box.cls[0]) 
+            cls_name = results.names[cls_id]    # name
+            conf = float(box.conf[0])           # confidence
+
+            if FOOD_CLASS_NAMES.get(cls_name, False):
+                detected.append({
+                    "name": cls_name.capitalize(),
+                    "confidence": round(conf, 3)
+                })
+
+    # Deduplicate already items and or overlap
+    seen = set()
+    final = []
+    for d in detected:
+        if d["name"] not in seen:
+            final.append(d)
+            seen.add(d["name"])
+
+    return final[:] or [{"name": "No ingredients detected", "confidence": 0.0}]
+
 
 
 
@@ -255,9 +219,9 @@ async def detect_ingredients(file: UploadFile = File(...)):
     img_bytes = await file.read()
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-    ingredients = infer_image2(pil_img)
+    ingredients = infer_image(pil_img)
     end = time.time()
-    print(f"Top 3 Detected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)\n")
+    print(f"\nDetected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)\n")
     
     return {"ingredients": ingredients}
 
@@ -281,7 +245,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 model = genai.GenerativeModel("gemini-2.5-pro")
 
                 prompt = f"""
-                You are an AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
+                You are a 5 star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
                 Include:
                 - Recipe name (# Title)
                 - One-sentence description
@@ -297,7 +261,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 print("\n🟢 Gemini succeeded.")
                 
                 end = time.time()
-                print(f"\n⌛ Time taken: {end-start:.2f}s")
+                print(f"⌛ Time taken: {end-start:.2f}s\n")
                 
             except Exception as e_gemini:
                 print("\n🔴 Gemini failed:", e_gemini)
@@ -306,7 +270,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 print("\n🟢 Qwen succeeded.")
                 
                 end = time.time()
-                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
+                print(f"⌛ Time taken: {end-start:.2f}s\n")
 
         else:
             try:
@@ -315,7 +279,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 print("\n🟢 Qwen succeeded.")
                 
                 end = time.time()
-                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
+                print(f"⌛ Time taken: {end-start:.2f}s\n")
                 
             except Exception as e_local2:
                 print("\n🔴 Qwen failed:", e_local2)
@@ -339,4 +303,4 @@ def health():
 
 # Run app
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860, reload=True)
