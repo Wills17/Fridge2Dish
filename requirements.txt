@@ -1,21 +1,24 @@
+# Core web framework
 fastapi
 uvicorn[standard]
-python-multipart
 jinja2
-python-dotenv
 
+# Image processing
+Pillow
+opencv-python-headless
+
+# ML / Vision
+ultralytics
 torch
-tensorflow
-transformers
+
+# Transformers + Qwen fallback
+transformers==4.45.2
 accelerate
-pillow
-numpy
-einops
-timm
-
-google-generativeai
-
 sentencepiece
 
-httpx
-pydantic
+# Google Gemini
+google-generativeai
+
+# Utilities
+numpy
+python-multipart
