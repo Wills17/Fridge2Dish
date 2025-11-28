@@ -112,4 +112,4 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 ---
 ## License
 Released under the **MIT License**.
-Free to use, modify, and build upon - attribution is appreciated.
+Free to use, modify, and build upon - but attribution is appreciated.
