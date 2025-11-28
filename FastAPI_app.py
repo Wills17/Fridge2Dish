@@ -20,15 +20,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import torch
 import tensorflow as tf
 import google.generativeai as genai
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoProcessor
 
 
 # Ingredient model (load once)
-MODEL_PATH = "models/ingredient_model.h5"
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"Ingredient model not found at {MODEL_PATH}")
+# MODEL_PATH = "models/ingredient_model_2.h5"
+# if not os.path.exists(MODEL_PATH):
+#     raise FileNotFoundError(f"Ingredient model not found at {MODEL_PATH}")
 
-MODEL = tf.keras.models.load_model(MODEL_PATH)
+# MODEL = tf.keras.models.load_model(MODEL_PATH)
 
 
 # Class names
@@ -53,7 +53,38 @@ def timeout_handler(signum, frame):
 _lock = threading.Lock()
 _tokenizer = None
 _model = None
+_florence_processor = None
+_florence_model = None
+_florence_lock = threading.Lock()
 
+
+# Florence2 detection first time function
+def load_florence2():
+    global _florence_processor, _florence_model
+    if _florence_model is not None:
+        return _florence_processor, _florence_model
+    
+    with _florence_lock:
+        if _florence_model is not None:
+            return _florence_processor, _florence_model
+        
+        try:
+            print("\n🔵 Loading Florence-2 for accurate detection...")
+            _florence_processor = AutoProcessor.from_pretrained("microsoft/Florence-2-base", trust_remote_code=True)
+            _florence_model = AutoModelForCausalLM.from_pretrained(
+                "microsoft/Florence-2-base",
+                torch_dtype=torch.float16,
+                attn_implementation="eager",
+                trust_remote_code=True)
+                    
+        except TimeoutError:
+            raise RuntimeError("\n🔴 [Fallback] Florence load timed out.")
+        
+        print("\n🟢 Florence-2 ready!\n")
+        return _florence_processor, _florence_model
+
+
+# Qwen fallback first time function
 def load_Qwen():
     global _tokenizer, _model
     if _model is not None:
@@ -70,8 +101,7 @@ def load_Qwen():
             return _tokenizer, _model
         
         except TimeoutError:
-            print("\n🔴 [Fallback] Qwen load timed out.")
-            raise RuntimeError("\n🔴 Model load failed.")
+            raise RuntimeError("\n🔴 [Fallback] Qwen load timed out.")
     
 
 def generate_recipe_qwen(ingredient_names):
@@ -126,7 +156,7 @@ def infer_image(pil_image):
     img = pil_image.resize((224, 224))
     arr = np.expand_dims(np.array(img) / 255.0, axis=0)
     preds = MODEL.predict(arr)[0]
-    top_idxs = np.argsort(preds)[::-1][:5]
+    top_idxs = np.argsort(preds)[::-1][:3]
     ingredients = []
     for i in top_idxs:
         ingredients.append({"name": CLASS_NAMES[i].capitalize(), "confidence": float(preds[i])})
@@ -135,6 +165,58 @@ def infer_image(pil_image):
         return [{"name": "Unknown", "confidence": 0.0}]
 
     return ingredients
+
+
+# Florence2 infer function
+def infer_image2(pil_image):
+    """
+    Florence-2 object detection — fixed for dtype mismatch.
+    """
+    processor, model = load_florence2()
+    
+    prompt = "<OD>"  # Object detection prompt
+    
+    # Process image
+    inputs = processor(text=prompt, images=pil_image, return_tensors="pt")
+    
+    # FIX: Force pixel_values to float16 to match model dtype
+    inputs["pixel_values"] = inputs["pixel_values"].to(torch.float16)
+    
+    # Generate with no_grad for efficiency
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=100,
+            do_sample=False,
+            num_beams=3,
+        )
+    
+    # Decode output
+    generated_text = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+    
+    # Post-process to extract objects
+    result = processor.post_process_generation(
+        generated_text, 
+        task=prompt, 
+        image_size=(pil_image.width, pil_image.height)
+    )
+    
+    # Extract labels (top 5)
+    detected = result["<OD>"]["labels"]
+    print(f"Detected raw labels: {detected}")
+    ingredients = []
+    for label in detected[:5]:
+        ingredients.append({
+            "name": label.strip().capitalize(),
+            "confidence": 0.95
+        })
+    
+    if not ingredients:
+        return [{"name": "Various fruits & vegetables", "confidence": 0.7}]
+    
+    return ingredients
+
 
 
 # initialize FastAPI app
@@ -173,9 +255,9 @@ async def detect_ingredients(file: UploadFile = File(...)):
     img_bytes = await file.read()
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-    ingredients = infer_image(pil_img)
+    ingredients = infer_image2(pil_img)
     end = time.time()
-    print(f"Detected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)")
+    print(f"Top 3 Detected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)\n")
     
     return {"ingredients": ingredients}
 
@@ -215,7 +297,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 print("\n🟢 Gemini succeeded.")
                 
                 end = time.time()
-                print(f"\n⌛ Time taken: {end-start:.2f}s\n")
+                print(f"\n⌛ Time taken: {end-start:.2f}s")
                 
             except Exception as e_gemini:
                 print("\n🔴 Gemini failed:", e_gemini)
