@@ -26,7 +26,8 @@ const elements = {
 };
 
 // Global abort controller
-let abortController = null;  
+let abortController = null;
+
 
 // Initialize app
 function init() {
@@ -105,20 +106,23 @@ function handleFileUpload(file) {
 
 // Reset upload
 function resetUpload() {
-    state.uploadedImage = null;
-    state.detectedIngredients = [];
+    if (state.isProcessing && abortController) abortController.abort();
+    state = { uploadedImage: null, detectedIngredients: [], isProcessing: false, geminiApiKey: state.geminiApiKey, skipApiKeyWarning: state.skipApiKeyWarning };
+    abortController = null;
     elements.fileInput.value = '';
     elements.uploadArea.style.display = 'block';
     elements.previewSection.style.display = 'none';
     elements.scanButton.style.display = 'none';
     elements.resultsSection.style.display = 'none';
     elements.heroSection.style.display = 'block';
+    elements.scanButtonText.textContent = "Scan Ingredients";
+    elements.scanButton.classList.remove("cancel-mode");
 }
 
 async function handleMissingApiKeyWarning() {
     if (state.geminiApiKey || state.skipApiKeyWarning) return;
     const proceed = confirm("Continue without Gemini API key?\n\n• Slower recipe generation\n• Lower quality possible\n\nProceed anyway?");
-    if (!proceed) throw new Error("Cancelled");
+    if (!proceed) throw new Error("User cancelled");
     if (confirm("Don't show this again?")) {
         state.skipApiKeyWarning = true;
         localStorage.setItem('skipApiKeyWarning', 'true');
@@ -129,21 +133,21 @@ function updateScanButton(isProcessing) {
     elements.scanButton.disabled = false;
 
     if (isProcessing) {
-        elements.scanButton.classList.add("processing");
+        elements.scanButton.classList.add("cancel-mode");
         elements.scanButtonText.textContent = "Cancel";
     } else {
-        elements.scanButton.classList.remove("processing");
+        elements.scanButton.classList.remove("cancel-mode");
         elements.scanButtonText.textContent = "Scan Ingredients";
     }
 }
 
 // Image Scan and Backend Processing
 async function handleScan() {
-    // If already running → act as Cancel button
+    // If already running → display as Cancel button
     if (state.isProcessing) {
         if (abortController) {
             abortController.abort();
-            console.log("Cancelled by user");
+            console.log("Scan cancelled by user");
         }
         return;
     }
@@ -153,10 +157,7 @@ async function handleScan() {
     // Reset previous controller
     abortController = new AbortController();
     state.isProcessing = true;
-
-    // Show Cancel
-    elements.scanButtonText.textContent = "Cancel";
-    elements.scanButton.classList.add("cancel-mode");
+    updateScanButton(true);
 
     // Reset results
     elements.ingredientsList.innerHTML = "";
@@ -168,7 +169,7 @@ async function handleScan() {
 
         // Detect ingredients
         const detectForm = new FormData();
-        detectForm.append("file", new File([blob], "image.jpg", { type: blob.type }));
+        detectForm.append("file", new File([blob], "fridge.jpg", { type: blob.type }));
 
         const detectResponse = await fetch("/detect-ingredients/", {
             method: "POST",
@@ -177,29 +178,25 @@ async function handleScan() {
         });
 
         if (!detectResponse.ok) {
-            if (abortController.signal.aborted) throw new Error("cancelled");
-            throw new Error("Detection failed");
+            const text = await detectResponse.text();
+            if (abortController.signal.aborted || detectResponse.status === 499) throw new Error("cancelled");
+            throw new Error(text || "Detection failed");
         }
 
         const { ingredients } = await detectResponse.json();
-        state.detectedIngredients = ingredients.map(i => ({
-            name: i.name,
-            confidence: i.confidence
-        }));
-
+        state.detectedIngredients = ingredients.map(i => ({ name: i.name, confidence: i.confidence }));
         displayIngredients(state.detectedIngredients);
 
-        // Show thinking card
+        // Generate recipe
         const card = document.createElement("div");
         card.className = "recipe-card";
         card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
-            <div class="recipe-section"><p style="text-align:center;padding:2rem">
-                <em>Chef is cooking...</em><br><br>Might take up to 60 seconds without API key
+            <div class="recipe-section"><p style="text-align:center;padding:3rem">
+                <em>Chef is thinking...</em><br><br>This can take up to 60s without a Gemini API key
             </p></div>`;
         elements.recipesList.appendChild(card);
         elements.recipesSection.style.display = "block";
 
-        // 2. Generate recipe
         const recipeForm = new FormData();
         recipeForm.append("ingredients", state.detectedIngredients.map(i => i.name).join(", "));
         recipeForm.append("api_key", state.geminiApiKey.trim());
@@ -211,8 +208,9 @@ async function handleScan() {
         });
 
         if (!recipeResponse.ok) {
-            if (abortController.signal.aborted) throw new Error("cancelled");
-            throw new Error("Recipe failed");
+            const text = await recipeResponse.text();
+            if (abortController.signal.aborted || recipeResponse.status === 499) throw new Error("cancelled");
+            throw new Error(text || "Recipe generation failed");
         }
 
         const { recipe } = await recipeResponse.json();
@@ -221,23 +219,20 @@ async function handleScan() {
 
     } catch (err) {
         if (err.message === "cancelled" || abortController.signal.aborted) {
-            elements.recipesList.innerHTML = `<div class="recipe-card" style="text-align:center;padding:2rem">
-                <p>You cancelled the operation.</p>
-                <button onclick="handleScan()" class="scan-button">
-                    <span id="scanButtonText">Try Again</span>
-                </button>
+            elements.recipesList.innerHTML = `<div class="recipe-card" style="text-align:center;padding:2rem;color:var(--text-secondary)">
+                <p>Operation cancelled.</p>
+                <button onclick="handleScan()" class="scan-button small">Try Again</button>
             </div>`;
         } else {
             console.error(err);
             elements.recipesList.innerHTML = `<div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
-                <h4>Error</h4><p>Try again or add Gemini API key</p>
+                <h4>Error</h4><p>Something went wrong. Try again or add a Gemini API key for better results.</p>
             </div>`;
         }
     } finally {
         state.isProcessing = false;
         abortController = null;
-        elements.scanButtonText.textContent = "Scan Ingredients";
-        elements.scanButton.classList.remove("cancel-mode");
+        updateScanButton(false);
     }
 }
 
@@ -246,12 +241,12 @@ async function handleScan() {
 function displayIngredients(ingredients) {
     elements.ingredientsList.innerHTML = '';
     ingredients.forEach((ing, i) => {
-        const conf = Math.round(ing.confidence * 100);
+        const conf = Math.round((ing.confidence || 0.7) * 100);
         const color = conf >= 70 ? "#2ecc71" : conf >= 40 ? "#f1c40f" : "#e74c3c";
 
         const item = document.createElement('div');
         item.className = 'ingredient-item';
-        item.style.animation = `fadeIn 0.8s ease-out ${i * 0.1}s forwards`;
+        item.style.animation = `fadeIn 2s ease-out ${i * 0.1}s forwards`;
         item.innerHTML = `
             <div class="ingredient-header">
                 <span class="ingredient-name">${ing.name}</span>
@@ -260,13 +255,10 @@ function displayIngredients(ingredients) {
                 </span>
             </div>
             <div class="confidence-bar">
-                <div class="confidence-fill" style="background:${color};width:0%;transition:width 1s ease-out"></div>
+                <div class="confidence-fill" style="background:${color};width:0%"></div>
             </div>`;
         elements.ingredientsList.appendChild(item);
-
-        setTimeout(() => {
-            item.querySelector('.confidence-fill').style.width = `${conf}%`;
-        }, 100);
+        setTimeout(() => item.querySelector('.confidence-fill').style.width = `${conf}%`, 100);
     });
 }
 
@@ -275,6 +267,7 @@ document.head.insertAdjacentHTML('beforeend', `
 <style>
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .ingredient-item{opacity:0}
+.scan-button.small{padding:0.5rem 1rem;font-size:0.9rem}
 </style>`);
 
 // Start app
