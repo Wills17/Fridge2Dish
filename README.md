@@ -41,7 +41,7 @@ Turn a photo of ingredients into a ready-to-cook recipe in seconds.
 
 ## Project Structure
 ```
-FRIDGEDISH/
+Fridge2Dish/
 ├── Dockerfile
 ├── requirements.txt
 │
@@ -75,7 +75,7 @@ FRIDGEDISH/
 
 ## Run Locally
 ```bash
-git clone https://github.com/yourusername/fridge2dish.git
+git clone https://github.com/Wills17/fridge2dish.git
 cd fridge2dish
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8000
@@ -110,8 +110,6 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 *Machine Learning Engineer | Builder of useful AI systems*😉
 
 ---
-
 ## License
-
 Released under the **MIT License**.
 Free to use, modify, and build upon - attribution is appreciated.
