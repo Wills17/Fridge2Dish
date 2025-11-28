@@ -14,30 +14,29 @@ app_port: 7860
 
 Turn a photo of ingredients into a ready-to-cook recipe in seconds.
 
-- Upload image → instantly see detec- Works 100 % on Hugging Face free CPU tier  ted ingredients with real confidence scores  
-- Click “Scan” → get a full recipe (Gemini 2.5 Flash if you provide a key, otherwise fast offline fallback)  
-- Cancel any long-running request with one click
+- Real-time ingredient detection powered by **YOLO** (state-of-the-art)
+- Click “Scan” → get a full recipe (**Gemini 2.5 Pro** if you provide a key or **Qwen2.5-1.5B** [free offline fallback]).
+- Cancel any long-running request with one click.
 
 ---
 ## Live demo: [Fridge2Dish](https://wills17-fridge2dish.hf.space/)
 
 
 ## Features
-- Custom TensorFlow/Keras CNN for ingredient detection (trained on 36 classes)
-- Confidence scores + animated progress bars
+- Accurate detection of **50+ real fridge ingredients** (banana, watermelon, eggs, cheese, yogurt, broccoli, etc.)
+- Confidence scores with smooth animated bars.
 - Two recipe backends:
-  - Gemini 2.5 Flash (optional API key – fastest & highest quality, ~ <10s load)
+  - Gemini 2.5 Flash (optional API key – fastest & highest quality, ~ <15s load)
   - Qwen2.5-1.5B-Instruct (offline fallback – no key required, ~20–60s load)
-- Cancel button that stops in-flight requests
 - Mobile-friendly UI with dark mode
 - Pure HTML/CSS/JS frontend (no frameworks)
 
 ## Tech Stack
-- FastAPI + Uvicorn
-- TensorFlow (CPU)
-- Transformers + PyTorch (CPU, fp16 – no bitsandbytes)
-- google-generativeai (Gemini)
-- Docker (optimized for Hugging Face Spaces)
+- **FastAPI** + Uvicorn
+- **YOLOv8l** (Ultralytics) — best-in-class object detection
+- **PyTorch CPU** (fp16) + Transformers
+- **Google Gemini** (optional) + **Qwen2.5-1.5B-Instruct** (offline)
+- Pure HTML/CSS/JS frontend (zero frameworks)
 
 ## Project Structure
 ```
@@ -68,7 +67,7 @@ Fridge2Dish/
 │
 ├── detect.py                        
 ├── download_images.py
-├── FastAPI_app.py
+├── FastAPI_app.py         Main app (YOLO + Gemini + Qwen)
 ├── streamlit_app.py
 └── README.md
 ```
