@@ -6,6 +6,7 @@ import io
 import time
 import traceback
 import threading
+import asyncio
 
 import uvicorn
 import numpy as np
@@ -19,7 +20,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # import ML libraries
 import torch
-import tensorflow as tf
 import google.generativeai as genai
 from ultralytics import YOLO
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -55,7 +55,7 @@ FOOD_CLASS_NAMES = {
     "bowl": True,        # fruit bowls, salad bowls
     "spoon": True,       # usually in yogurt or dessert
     "fork": True,
-    "knife": True,      # rarely wrong in context
+    "knife": True,       # rarely wrong in context
 
     # Explicitly block non-food
     "person": False, "chair": False, "tv": False, "laptop": False, "cell phone": False,
@@ -65,17 +65,14 @@ FOOD_CLASS_NAMES = {
 }
 
 
-
-# Timeout handler
-def timeout_handler(signum, frame):
-    raise TimeoutError("Model load timed out after 300s")
-
-
 # Thread-safe lazy loading
 _lock = threading.Lock()
 _tokenizer = None
 _model = None
 
+# Global task tracker — allows real cancellation
+current_task = None
+task_lock = threading.Lock()
 
 
 # Qwen fallback first time function
@@ -108,7 +105,7 @@ def generate_recipe_qwen(ingredient_names):
         Return ONLY clean markdown with:
         - Recipe title (# Title)
         - One-sentence description
-        - Ingredients list with quantities
+        - Ingredients list, add quantities if applicable
         - Numbered steps
         - Optional tip"""}
             ]
@@ -187,7 +184,7 @@ def infer_image(pil_image):
 app = FastAPI(
     title="Fridge2Dish",
     description="Upload an image → Detect ingredients → Generate recipes",
-    version="4.0.0"
+    version="5.0.0"
 )
 
 # static and templates
@@ -212,8 +209,32 @@ def home(request: Request):
 # Ingredient detection route
 @app.post("/detect-ingredients/")
 async def detect_ingredients(file: UploadFile = File(...)):
+    
+    global current_task
+    
     if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         raise HTTPException(status_code=400, detail="Invalid image format.")
+    
+    
+    # Cancel any running task
+    with task_lock:
+        if current_task and not current_task.done():
+            current_task.cancel()
+        loop = asyncio.get_event_loop()
+        current_task = loop.create_task(_detect_ingredients_task(file))
+    
+    try:
+        result = await current_task
+        return result
+    except asyncio.CancelledError:
+        print("\n🔴 Detection cancelled by user.")
+        raise HTTPException(status_code=499, detail="Cancelled by client")
+    finally:
+        with task_lock:
+            if current_task is not None and current_task.done():
+                current_task = None
+
+async def _detect_ingredients_task(file: UploadFile):
     
     start = time.time()
     img_bytes = await file.read()
@@ -229,10 +250,34 @@ async def detect_ingredients(file: UploadFile = File(...)):
 # Generate recipe route
 @app.post("/generate-recipe/")
 async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form(alias="api_key", default="")):
+    
+    global current_task
+    
+    with task_lock:
+        if current_task and not current_task.done():
+            current_task.cancel()
+        loop = asyncio.get_event_loop()
+        current_task = loop.create_task(_generate_recipe_task(ingredients, user_api_key))
+    
+    try:
+        result = await current_task
+        return result
+    except asyncio.CancelledError:
+        print("\n🔴 Recipe generation cancelled by user.")
+        raise HTTPException(status_code=499, detail="Cancelled by client")
+    finally:
+        with task_lock:
+            if current_task is not None and current_task.done():
+                current_task = None
+    
+async def _generate_recipe_task(ingredients: str, user_api_key: str):
+    
+    time.sleep(3)
     try:
         ingredient_names = [ing.strip() for ing in ingredients.split(",") if ing.strip()]
         if not ingredient_names:
             raise HTTPException(status_code=400, detail="No ingredients provided.")
+        
         
         start = time.time()
         
@@ -249,7 +294,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
                 Include:
                 - Recipe name (# Title)
                 - One-sentence description
-                - Ingredients list with quantities
+                - Ingredients list, add quantities if applicable
                 - 6-10 concise steps
                 - Optional tips
                 RETURN RESULT IN MARKDOWN FORMAT ONLY.
