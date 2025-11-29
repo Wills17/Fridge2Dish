@@ -103,7 +103,7 @@ body {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: hsl(var(--muted));
+    background: var(--muted);
     border: none;
     cursor: pointer;
     display: flex;
@@ -121,7 +121,7 @@ body {
 .dark-mode-toggle .sun-icon,
 .dark-mode-toggle .moon-icon {
     position: absolute;
-    color: hsl(var(--foreground));
+    color: var(--foreground);
     transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
@@ -627,3 +627,21 @@ body {
         padding: 1.5rem;
     }
 }
+
+/* API Key Input Section Responsive Adjustments */
+@media (max-width: 640px) {
+    .api-key-row {
+        flex-direction: row !important;
+        align-items: center;
+    }
+
+    .api-key-input {
+        flex: 1 1 auto !important;
+        width: auto !important;
+    }
+
+    .get-api-key-inline {
+        flex-shrink: 0;
+    }
+}
+
