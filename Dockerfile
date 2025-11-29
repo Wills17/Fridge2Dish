@@ -4,7 +4,14 @@ FROM python:3.10
 WORKDIR /app
 
 # System dependencies
-RUN apt-get update && apt-get install -y git build-essential
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1
 
 # Copy project
 COPY . .
