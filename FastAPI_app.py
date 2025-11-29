@@ -10,7 +10,7 @@ import asyncio
 
 import uvicorn
 import numpy as np
-import cv2
+import cv2 as cv
 from PIL import Image
 from fastapi import FastAPI, Form, UploadFile, File, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -148,7 +148,7 @@ def infer_image(pil_image):
     open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB → BGR
 
     # Resize to 640x640, YOLOv8 default
-    img = cv2.resize(open_cv_image, (640, 640))
+    img = cv.resize(open_cv_image, (640, 640))
 
     # Inference with low threshold
     results = _yolo_model(img, conf=0.2, iou=0.45, verbose=False)[0]

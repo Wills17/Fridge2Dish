@@ -23,7 +23,7 @@ Turn a photo of ingredients into a ready-to-cook recipe in seconds.
 
 
 ## Features
-- Accurate detection of **50+ real fridge ingredients** (banana, watermelon, eggs, cheese, yogurt, broccoli, etc.)
+- Accurate detection of **real fridge ingredients** (banana, watermelon, eggs, cheese, yogurt, broccoli, etc.)
 - Confidence scores with smooth animated bars.
 - Two recipe backends:
   - Gemini 2.5 Flash (optional API key – fastest & highest quality, ~ <15s load)
@@ -44,7 +44,7 @@ Fridge2Dish/
 ├── Dockerfile
 ├── requirements.txt
 │
-├── dataset/
+├── dataset/                      Used to train custom CNN model
 ├── detector/
 │   ├── infer.py
 │   ├── infer2.py
@@ -64,10 +64,9 @@ Fridge2Dish/
 │
 ├── templates/
 │   └── index.html
-│
-├── detect.py                        
+│                    
 ├── download_images.py
-├── FastAPI_app.py         Main app (YOLO + Gemini + Qwen)
+├── FastAPI_app.py                Main app (YOLO + Gemini + Qwen)
 ├── streamlit_app.py
 └── README.md
 ```
@@ -77,9 +76,9 @@ Fridge2Dish/
 git clone https://github.com/Wills17/fridge2dish.git
 cd fridge2dish
 pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
+uvicorn app:app --reload --port 7860
 ```
-Open http://localhost:8000
+Open http://localhost:7860
 
 ### Optional Gemini API Key
 Add your key in the app or set the environment variable:
@@ -90,8 +89,17 @@ GEMINI_API_KEY=your_key_here
 ### Docker (Hugging Face Spaces)
 ```dockerfile
 FROM python:3.10
+
 WORKDIR /app
-RUN apt-get update && apt-get install -y git build-essential
+
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1
 
 COPY . .
 
@@ -111,4 +119,4 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 ---
 ## License
 Released under the **MIT License**.
-Free to use, modify, and build upon - but attribution is appreciated.
+Free to use, modify, and build upon - attribution is appreciated.
