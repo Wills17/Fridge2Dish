@@ -86,9 +86,11 @@ function setupEventListeners() {
     });
 
 
-    // Dark mode toggle
+    // Reset button
     elements.resetButton.addEventListener('click', resetUpload);
+    // Scan button
     elements.scanButton.addEventListener('click', handleScan);
+    // Dark mode toggle
     elements.darkModeToggle.addEventListener('click', () => {
         const isDark = document.documentElement.classList.toggle('dark');
         localStorage.setItem('darkMode', isDark);
@@ -124,7 +126,6 @@ function resetUpload() {
     state.uploadedImage = null;
     state.detectedIngredients = [];
     state.isProcessing = false;
-
     abortController = null;
 
     // Reset UI
@@ -207,7 +208,7 @@ async function handleScan() {
         card.className = "recipe-card";
         card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
             <div class="recipe-section"><p style="text-align:center;padding:3rem">
-                <em>Chef is thinking...</em><br><br>This can take up to 60s without a Gemini API key
+                <em>Chef is thinking...</em><br><br>This can take up to 60s without your Gemini API key
             </p></div>`;
         elements.recipesList.appendChild(card);
         elements.recipesSection.style.display = "block";
