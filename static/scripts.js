@@ -67,15 +67,22 @@ function setupEventListeners() {
 
     // Upload area click triggers file input
     elements.uploadArea.addEventListener('click', () => elements.fileInput.click());
-    elements.uploadArea.addEventListener('dragover', e => { e.preventDefault(); elements.uploadArea.style.borderColor = 'var(--primary)'; });
-    elements.uploadArea.addEventListener('dragleave', () => elements.uploadArea.style.borderColor = 'var(--border)');
+    elements.uploadArea.addEventListener('dragover', e => { 
+        e.preventDefault(); 
+        elements.uploadArea.style.borderColor = 'var(--primary)'; 
+    });
+    elements.uploadArea.addEventListener('dragleave', () => {
+        elements.uploadArea.style.borderColor = 'var(--border)';
+    });
     elements.uploadArea.addEventListener('drop', e => {
         e.preventDefault();
         elements.uploadArea.style.borderColor = 'var(--border)';
         if (e.dataTransfer.files[0]) handleFileUpload(e.dataTransfer.files[0]);
     });
     elements.fileInput.addEventListener('change', e => {
-        if (e.target.files[0]) handleFileUpload(e.target.files[0]);
+        if (e.target.files && e.target.files[0]) {
+            handleFileUpload(e.target.files[0]);
+        }
     });
 
 
@@ -104,20 +111,35 @@ function handleFileUpload(file) {
     reader.readAsDataURL(file);
 }
 
+
 // Reset upload
 function resetUpload() {
-    if (state.isProcessing && abortController) abortController.abort();
-    state = { uploadedImage: null, detectedIngredients: [], isProcessing: false, geminiApiKey: state.geminiApiKey, skipApiKeyWarning: state.skipApiKeyWarning };
+    // Cancel any ongoing request
+    if (state.isProcessing && abortController) {
+        abortController.abort();
+        console.log("Operation cancelled via reset");
+    }
+
+    // Properly reset state
+    state.uploadedImage = null;
+    state.detectedIngredients = [];
+    state.isProcessing = false;
+
     abortController = null;
+
+    // Reset UI
     elements.fileInput.value = '';
     elements.uploadArea.style.display = 'block';
     elements.previewSection.style.display = 'none';
     elements.scanButton.style.display = 'none';
     elements.resultsSection.style.display = 'none';
     elements.heroSection.style.display = 'block';
+    elements.ingredientsList.innerHTML = '';
+    elements.recipesList.innerHTML = '';
     elements.scanButtonText.textContent = "Scan Ingredients";
     elements.scanButton.classList.remove("cancel-mode");
 }
+
 
 async function handleMissingApiKeyWarning() {
     if (state.geminiApiKey || state.skipApiKeyWarning) return;
@@ -130,8 +152,6 @@ async function handleMissingApiKeyWarning() {
 }
 
 function updateScanButton(isProcessing) {
-    elements.scanButton.disabled = false;
-
     if (isProcessing) {
         elements.scanButton.classList.add("cancel-mode");
         elements.scanButtonText.textContent = "Cancel";
@@ -143,12 +163,8 @@ function updateScanButton(isProcessing) {
 
 // Image Scan and Backend Processing
 async function handleScan() {
-    // If already running → display as Cancel button
     if (state.isProcessing) {
-        if (abortController) {
-            abortController.abort();
-            console.log("Scan cancelled by user");
-        }
+        if (abortController) abortController.abort();
         return;
     }
 
@@ -178,9 +194,8 @@ async function handleScan() {
         });
 
         if (!detectResponse.ok) {
-            const text = await detectResponse.text();
             if (abortController.signal.aborted || detectResponse.status === 499) throw new Error("cancelled");
-            throw new Error(text || "Detection failed");
+            throw new Error("Detection failed");
         }
 
         const { ingredients } = await detectResponse.json();
@@ -208,9 +223,8 @@ async function handleScan() {
         });
 
         if (!recipeResponse.ok) {
-            const text = await recipeResponse.text();
             if (abortController.signal.aborted || recipeResponse.status === 499) throw new Error("cancelled");
-            throw new Error(text || "Recipe generation failed");
+            throw new Error("Recipe generation failed");
         }
 
         const { recipe } = await recipeResponse.json();
@@ -226,7 +240,7 @@ async function handleScan() {
         } else {
             console.error(err);
             elements.recipesList.innerHTML = `<div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
-                <h4>Error</h4><p>Something went wrong. Try again or add a Gemini API key for better results.</p>
+                <h4>Error</h4><p>Something went wrong. Try again or add a Gemini API key.</p>
             </div>`;
         }
     } finally {
@@ -246,7 +260,7 @@ function displayIngredients(ingredients) {
 
         const item = document.createElement('div');
         item.className = 'ingredient-item';
-        item.style.animation = `fadeIn 2s ease-out ${i * 0.1}s forwards`;
+        item.style.animation = `fadeIn 1s ease-out ${i * 0.1}s forwards`;
         item.innerHTML = `
             <div class="ingredient-header">
                 <span class="ingredient-name">${ing.name}</span>
