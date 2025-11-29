@@ -26,7 +26,7 @@ Turn a photo of ingredients into a ready-to-cook recipe in seconds.
 - Accurate detection of **real fridge ingredients** (banana, watermelon, eggs, cheese, yogurt, broccoli, etc.)
 - Confidence scores with smooth animated bars.
 - Two recipe backends:
-  - Gemini 2.5 Flash (optional API key – fastest & highest quality, ~ <15s load)
+  - Gemini 2.5 Pro (optional API key – fastest & highest quality, ~ <15s load)
   - Qwen2.5-1.5B-Instruct (offline fallback – no key required, ~20–60s load)
 - Mobile-friendly UI with dark mode
 - Pure HTML/CSS/JS frontend (no frameworks)
