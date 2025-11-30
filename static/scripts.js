@@ -224,6 +224,7 @@ async function handleScan() {
                 </p>
             </div>`;
         elements.recipesList.appendChild(card);
+        elements.recipesSection.style.display = "block";
 
         const recipeForm = new FormData();
         recipeForm.append("ingredients", ingredients.map(i => i.name).join(", "));
@@ -246,6 +247,8 @@ async function handleScan() {
             <div class="recipe-section">
                 <div class="recipe-markdown">${marked.parse(recipe)}</div>
             </div>`;
+        
+        elements.recipesSection.style.display = "block";
     }
 
     // Error handling
