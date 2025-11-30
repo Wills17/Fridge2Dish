@@ -7,6 +7,7 @@ import time
 import traceback
 import threading
 import asyncio
+from typing import Optional
 
 import uvicorn
 import numpy as np
@@ -70,9 +71,11 @@ _lock = threading.Lock()
 _tokenizer = None
 _model = None
 
-# Global task tracker — allows real cancellation
-current_task = None
+# Global task tracker
+current_task: Optional[asyncio.Task] = None
 task_lock = threading.Lock()
+
+cancel_event = threading.Event()
 
 
 # Qwen fallback first time function
@@ -96,6 +99,11 @@ def load_Qwen():
     
 
 def generate_recipe_qwen(ingredient_names):
+    
+    # Check cancellation early
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+    
     tokenizer, model = load_Qwen() 
     
     messages = [
@@ -135,6 +143,10 @@ def generate_recipe_qwen(ingredient_names):
     # Final cleanup
     if "<|" in recipe_text:
         recipe_text = recipe_text.split("<|")[0].strip()
+        
+    # final cancellation check
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
         
     return recipe_text
 
@@ -178,9 +190,27 @@ def infer_image(pil_image):
     return final[:] or [{"name": "No ingredients detected", "confidence": 0.0}]
 
 
+# Async helper wraps
+async def run_inference_threadsafe(pil_img):
+    # run blocking infer_image in thread so the event loop is free
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+    return await asyncio.to_thread(infer_image, pil_img)
+
+async def run_qwen_threadsafe(ingredient_names):
+    # run blocking Qwen genearation in thread
+    return await asyncio.to_thread(generate_recipe_qwen, ingredient_names)
+
+async def run_gemini_threadsafe(gen_model, prompt):
+    # run Gemini's blocking call in a background thread
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+    return await asyncio.to_thread(gen_model.generate_content, prompt)
 
 
-# initialize FastAPI app
+
+
+# FastAPI app setup
 app = FastAPI(
     title="Fridge2Dish",
     description="Upload an image → Detect ingredients → Generate recipes",
@@ -206,6 +236,24 @@ def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+# Cancel endpoint
+@app.post("/cancel")
+def cancel_current():
+    """
+    Mark the cancellation flag and cancel the running asyncio task (if any).
+    Client should still abort the fetch (AbortController) to fully free resources.
+    """
+    cancel_event.set()
+    with task_lock:
+        global current_task
+        if current_task and not current_task.done():
+            try:
+                current_task.cancel()
+            except Exception:
+                pass
+    return {"status": "cancelling"}
+
+
 # Ingredient detection route
 @app.post("/detect-ingredients/")
 async def detect_ingredients(file: UploadFile = File(...)):
@@ -215,35 +263,68 @@ async def detect_ingredients(file: UploadFile = File(...)):
     if not file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         raise HTTPException(status_code=400, detail="Invalid image format.")
     
-    
-    # Cancel any running task
+
+    # Reset cancellation signal and schedule new task
+    cancel_event.clear()
     with task_lock:
         if current_task and not current_task.done():
-            current_task.cancel()
+            # signal cancel to background work and cancel the asyncio task
+            cancel_event.set()
+            try:
+                current_task.cancel()
+            except Exception:
+                pass
+
         loop = asyncio.get_event_loop()
         current_task = loop.create_task(_detect_ingredients_task(file))
-    
+
     try:
         result = await current_task
         return result
     except asyncio.CancelledError:
-        print("\n🔴 Detection cancelled by user.")
+        # return 499 to indicate client cancelled
+        print("\n🔴 Ingredient detection cancelled by user.")
         raise HTTPException(status_code=499, detail="Cancelled by client")
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         with task_lock:
             if current_task is not None and current_task.done():
                 current_task = None
+            # clear cancel flag after done
+            cancel_event.clear()
+
 
 async def _detect_ingredients_task(file: UploadFile):
+    """
+    This task runs in asyncio and uses threads for blocking calls.
+    It also checks cancel_event.
+    """
     
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
     start = time.time()
     img_bytes = await file.read()
+
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-    ingredients = infer_image(pil_img)
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
+    # YOLO inference in thread
+    ingredients = await run_inference_threadsafe(pil_img)
+
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
     end = time.time()
     print(f"\nDetected ingredients: {ingredients} (⌛ Took {end-start:.2f}s)\n")
-    
+
     return {"ingredients": ingredients}
 
 
@@ -255,39 +336,53 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
     
     with task_lock:
         if current_task and not current_task.done():
-            current_task.cancel()
+            cancel_event.set()
+            try:
+                current_task.cancel()
+            except Exception:
+                pass
         loop = asyncio.get_event_loop()
         current_task = loop.create_task(_generate_recipe_task(ingredients, user_api_key))
-    
+
     try:
         result = await current_task
         return result
     except asyncio.CancelledError:
         print("\n🔴 Recipe generation cancelled by user.")
         raise HTTPException(status_code=499, detail="Cancelled by client")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
         with task_lock:
             if current_task is not None and current_task.done():
                 current_task = None
-    
+            cancel_event.clear()
+
 async def _generate_recipe_task(ingredients: str, user_api_key: str):
-    
-    time.sleep(3)
+    # cooperative sleep (non-blocking)
+    await asyncio.sleep(0.01)  # small yield; removed long blocking sleeps
     try:
         ingredient_names = [ing.strip() for ing in ingredients.split(",") if ing.strip()]
         if not ingredient_names:
             raise HTTPException(status_code=400, detail="No ingredients provided.")
-        
-        
+
         start = time.time()
         
         recipe_text = None
         api_key = (user_api_key or "").strip()
 
+        # First try Gemini if API key provided; else fall back to Qwen
         if api_key:
             try:
+                # check cancellation before heavy work
+                if cancel_event.is_set():
+                    raise asyncio.CancelledError()
+
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-2.5-pro")
+                gen_model = genai.GenerativeModel("gemini-2.5-pro")
 
                 prompt = f"""
                 You are a 5 star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
@@ -301,31 +396,46 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
                 """
 
                 print("\n🟡 Trying Gemini...")
-                response = model.generate_content(prompt)
-                recipe_text = response.text.strip()
+                # run Gemini blocking call in thread and get response object
+                response = await run_gemini_threadsafe(gen_model, prompt)
+
+                if cancel_event.is_set():
+                    raise asyncio.CancelledError()
+
+                recipe_text = (response.text or "").strip()
                 print("\n🟢 Gemini succeeded.")
-                
-                end = time.time()
-                print(f"⌛ Time taken: {end-start:.2f}s\n")
-                
-            except Exception as e_gemini:
-                print("\n🔴 Gemini failed:", e_gemini)
-                print("\n🟡 Trying Qwen fallback...")
-                recipe_text = generate_recipe_qwen(ingredient_names)
-                print("\n🟢 Qwen succeeded.")
-                
+
                 end = time.time()
                 print(f"⌛ Time taken: {end-start:.2f}s\n")
 
+            except asyncio.CancelledError:
+                print("\n🔴 Generation cancelled during Gemini stage.")
+                raise
+            except Exception as e_gemini:
+                
+                print("\n🔴 Gemini failed:", e_gemini)
+                print("\n🟡 Trying Qwen fallback...")
+                try:
+                    recipe_text = await run_qwen_threadsafe(ingredient_names)
+                    print("\n🟢 Qwen succeeded.")
+                except asyncio.CancelledError:
+                    print("\n🔴 Generation cancelled during Qwen fallback.")
+                    raise
+                except Exception as e_qwen:
+                    print("\n🔴 Qwen also failed:", e_qwen)
+                    raise e_qwen
+
         else:
+            # no API key — use Qwen fallback
             try:
                 print("\n🟡 No API key → Using Qwen fallback.")
-                recipe_text = generate_recipe_qwen(ingredient_names)
+                recipe_text = await run_qwen_threadsafe(ingredient_names)
                 print("\n🟢 Qwen succeeded.")
-                
                 end = time.time()
                 print(f"⌛ Time taken: {end-start:.2f}s\n")
-                
+            except asyncio.CancelledError:
+                print("\n🔴 Generation cancelled during Qwen stage.")
+                raise
             except Exception as e_local2:
                 print("\n🔴 Qwen failed:", e_local2)
                 recipe_text = "# Sorry!\n\nThe free AI model is taking too long to load right now.\n\nPlease consider adding your Gemini API key for instant recipes.\n\n### Thank you for understanding!"
@@ -335,8 +445,11 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except asyncio.CancelledError:
+        raise
+    except Exception:
         traceback.print_exc()
+        raise
 
 
         
