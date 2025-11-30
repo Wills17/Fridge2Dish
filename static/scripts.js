@@ -128,7 +128,6 @@ function resetUpload() {
     state.currentPhase = null;
 
     // Reset UI
-    elements.fileInput.value = '';
     elements.uploadArea.style.display = 'block';
     elements.previewSection.style.display = 'none';
     elements.scanButton.style.display = 'none';
