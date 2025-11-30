@@ -4,7 +4,8 @@ const state = {
     detectedIngredients: [],
     isProcessing: false,
     geminiApiKey: "",
-    skipApiKeyWarning: false
+    skipApiKeyWarning: false,
+    currentPhase: null
 };
 
 // DOM elements 
@@ -59,17 +60,17 @@ function loadDarkModePreference() {
 // setup event listeners
 function setupEventListeners() {
 
-    // API key field
+    // save API key
     elements.apiKeyInput.addEventListener('input', (e) => {
         state.geminiApiKey = e.target.value.trim();
         localStorage.setItem('geminiApiKey', state.geminiApiKey);
     });
 
-    // Upload area click triggers file input
+    // Upload area, click triggers file input
     elements.uploadArea.addEventListener('click', () => elements.fileInput.click());
-    elements.uploadArea.addEventListener('dragover', e => { 
-        e.preventDefault(); 
-        elements.uploadArea.style.borderColor = 'var(--primary)'; 
+    elements.uploadArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        elements.uploadArea.style.borderColor = 'var(--primary)';
     });
     elements.uploadArea.addEventListener('dragleave', () => {
         elements.uploadArea.style.borderColor = 'var(--border)';
@@ -90,7 +91,7 @@ function setupEventListeners() {
     elements.resetButton.addEventListener('click', resetUpload);
     // Scan button
     elements.scanButton.addEventListener('click', handleScan);
-    // Dark mode toggle
+
     elements.darkModeToggle.addEventListener('click', () => {
         const isDark = document.documentElement.classList.toggle('dark');
         localStorage.setItem('darkMode', isDark);
@@ -101,9 +102,11 @@ function setupEventListeners() {
 // File Upload + Preview
 function handleFileUpload(file) {
     if (!file.type.startsWith('image/')) return alert('Please upload an image.');
+
     const reader = new FileReader();
     reader.onload = e => {
         state.uploadedImage = e.target.result;
+
         elements.previewImage.src = e.target.result;
         elements.uploadArea.style.display = 'none';
         elements.previewSection.style.display = 'block';
@@ -116,17 +119,13 @@ function handleFileUpload(file) {
 
 // Reset upload
 function resetUpload() {
-    // Cancel any ongoing request
-    if (state.isProcessing && abortController) {
-        abortController.abort();
-        console.log("Operation cancelled via reset");
-    }
+    if (abortController) abortController.abort();
 
-    // Properly reset state
+    abortController = null;
     state.uploadedImage = null;
     state.detectedIngredients = [];
     state.isProcessing = false;
-    abortController = null;
+    state.currentPhase = null;
 
     // Reset UI
     elements.fileInput.value = '';
@@ -135,23 +134,29 @@ function resetUpload() {
     elements.scanButton.style.display = 'none';
     elements.resultsSection.style.display = 'none';
     elements.heroSection.style.display = 'block';
+
     elements.ingredientsList.innerHTML = '';
     elements.recipesList.innerHTML = '';
-    elements.scanButtonText.textContent = "Scan Ingredients";
-    elements.scanButton.classList.remove("cancel-mode");
+
+    updateScanButton(false);
 }
 
-
+// Handle missing API key warning
 async function handleMissingApiKeyWarning() {
     if (state.geminiApiKey || state.skipApiKeyWarning) return;
-    const proceed = confirm("Continue without Gemini API key?\n\n• Slower recipe generation\n• Lower quality possible\n\nProceed anyway?");
+
+    const proceed = confirm(
+        "Continue without Gemini API key?\n\n• Slower recipe generation\n• Lower quality possible\n\nProceed anyway?"
+    );
     if (!proceed) throw new Error("User cancelled");
+
     if (confirm("Don't show this again?")) {
         state.skipApiKeyWarning = true;
         localStorage.setItem('skipApiKeyWarning', 'true');
     }
 }
 
+// Scan button state
 function updateScanButton(isProcessing) {
     if (isProcessing) {
         elements.scanButton.classList.add("cancel-mode");
@@ -162,8 +167,11 @@ function updateScanButton(isProcessing) {
     }
 }
 
-// Image Scan and Backend Processing
+
+// Scan button handler (detect ingredients → generate recipe)
 async function handleScan() {
+
+    // Cancel mode
     if (state.isProcessing) {
         if (abortController) abortController.abort();
         return;
@@ -171,15 +179,16 @@ async function handleScan() {
 
     await handleMissingApiKeyWarning();
 
-    // Reset previous controller
+    // Create new abort controller
     abortController = new AbortController();
     state.isProcessing = true;
     updateScanButton(true);
+    elements.resultsSection.style.display = "block";
 
-    // Reset results
+    // Reset UI
     elements.ingredientsList.innerHTML = "";
     elements.recipesList.innerHTML = "";
-    elements.resultsSection.style.display = "block";
+    elements.recipesSection.style.display = "none";
 
     try {
         const blob = await (await fetch(state.uploadedImage)).blob();
@@ -200,22 +209,25 @@ async function handleScan() {
         }
 
         const { ingredients } = await detectResponse.json();
-        state.detectedIngredients = ingredients.map(i => ({ name: i.name, confidence: i.confidence }));
-        displayIngredients(state.detectedIngredients);
+        state.detectedIngredients = ingredients;
+        displayIngredients(ingredients);
 
         // Generate recipe
         const card = document.createElement("div");
         card.className = "recipe-card";
-        card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
-            <div class="recipe-section"><p style="text-align:center;padding:3rem">
-                <em>Chef is thinking...</em><br><br>This can take up to 60s without your Gemini API key
-            </p></div>`;
+        card.innerHTML = `
+            <div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
+            <div class="recipe-section">
+                <p style="text-align:center;padding:3rem">
+                    <em>Chef is thinking...</em><br><br>
+                    This may take up to 60s without your Gemini API key.
+                </p>
+            </div>`;
         elements.recipesList.appendChild(card);
-        elements.recipesSection.style.display = "block";
 
         const recipeForm = new FormData();
-        recipeForm.append("ingredients", state.detectedIngredients.map(i => i.name).join(", "));
-        recipeForm.append("api_key", state.geminiApiKey.trim());
+        recipeForm.append("ingredients", ingredients.map(i => i.name).join(", "));
+        recipeForm.append("api_key", state.geminiApiKey);
 
         const recipeResponse = await fetch("/generate-recipe/", {
             method: "POST",
@@ -229,23 +241,35 @@ async function handleScan() {
         }
 
         const { recipe } = await recipeResponse.json();
-        card.innerHTML = `<div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
-            <div class="recipe-section"><div class="recipe-markdown">${marked.parse(recipe)}</div></div>`;
-
-    } catch (err) {
-        if (err.message === "cancelled" || abortController.signal.aborted) {
-            elements.recipesList.innerHTML = `<div class="recipe-card" style="text-align:center;padding:2rem;color:var(--text-secondary)">
-                <p>Operation cancelled.</p>
-                <button onclick="handleScan()" class="scan-button small">Try Again</button>
+        card.innerHTML = `
+            <div class="recipe-header"><h4>AI-Generated Recipe</h4></div>
+            <div class="recipe-section">
+                <div class="recipe-markdown">${marked.parse(recipe)}</div>
             </div>`;
+    }
+
+    // Error handling
+    catch (err) {
+        if (err.message === "cancelled" || abortController.signal?.aborted) {
+            elements.recipesList.innerHTML = `
+                <div class="recipe-card" style="text-align:center;padding:2rem;color:var(--text-secondary)">
+                    <p>Operation cancelled.</p>
+                    <button onclick="handleScan()" class="scan-button small">Try Again</button>
+                </div>`;
         } else {
             console.error(err);
-            elements.recipesList.innerHTML = `<div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
-                <h4>Error</h4><p>Something went wrong. Try again or add a Gemini API key.</p>
-            </div>`;
+            elements.recipesList.innerHTML = `
+                <div class="recipe-card" style="color:var(--error);text-align:center;padding:2rem">
+                    <h4>Error</h4>
+                    <p>Something went wrong. Try again or add a Gemini API key.</p>
+                </div>`;
         }
-    } finally {
+    }
+
+    // Finally cleanup
+    finally {
         state.isProcessing = false;
+        state.currentPhase = null;
         abortController = null;
         updateScanButton(false);
     }
@@ -255,6 +279,7 @@ async function handleScan() {
 // Display detected ingredients with confidence bars
 function displayIngredients(ingredients) {
     elements.ingredientsList.innerHTML = '';
+
     ingredients.forEach((ing, i) => {
         const conf = Math.round((ing.confidence || 0.7) * 100);
         const color = conf >= 70 ? "#2ecc71" : conf >= 40 ? "#f1c40f" : "#e74c3c";
@@ -262,6 +287,7 @@ function displayIngredients(ingredients) {
         const item = document.createElement('div');
         item.className = 'ingredient-item';
         item.style.animation = `fadeIn 1s ease-out ${i * 0.1}s forwards`;
+
         item.innerHTML = `
             <div class="ingredient-header">
                 <span class="ingredient-name">${ing.name}</span>
@@ -272,18 +298,20 @@ function displayIngredients(ingredients) {
             <div class="confidence-bar">
                 <div class="confidence-fill" style="background:${color};width:0%"></div>
             </div>`;
+
         elements.ingredientsList.appendChild(item);
         setTimeout(() => item.querySelector('.confidence-fill').style.width = `${conf}%`, 100);
     });
 }
 
-// Fade-in animation
+// Animation
 document.head.insertAdjacentHTML('beforeend', `
 <style>
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .ingredient-item{opacity:0}
 .scan-button.small{padding:0.5rem 1rem;font-size:0.9rem}
 </style>`);
+
 
 // Start app
 document.readyState === 'loading'
