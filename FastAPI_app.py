@@ -100,10 +100,6 @@ def load_Qwen():
 
 def generate_recipe_qwen(ingredient_names):
     
-    # Check cancellation early
-    if cancel_event.is_set():
-        raise asyncio.CancelledError()
-    
     tokenizer, model = load_Qwen() 
     
     messages = [
@@ -199,6 +195,8 @@ async def run_inference_threadsafe(pil_img):
 
 async def run_qwen_threadsafe(ingredient_names):
     # run blocking Qwen genearation in thread
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
     return await asyncio.to_thread(generate_recipe_qwen, ingredient_names)
 
 async def run_gemini_threadsafe(gen_model, prompt):
@@ -362,8 +360,7 @@ async def generate_recipe(ingredients: str = Form(...), user_api_key: str = Form
             cancel_event.clear()
 
 async def _generate_recipe_task(ingredients: str, user_api_key: str):
-    # cooperative sleep (non-blocking)
-    await asyncio.sleep(0.01)  # small yield; removed long blocking sleeps
+    await asyncio.sleep(0.01) 
     try:
         ingredient_names = [ing.strip() for ing in ingredients.split(",") if ing.strip()]
         if not ingredient_names:
