@@ -7,7 +7,7 @@ import time
 import traceback
 import threading
 import asyncio
-from typing import Optional
+from typing import Optional, List, Dict
 
 import uvicorn
 import numpy as np
@@ -21,17 +21,32 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # import ML libraries
 import torch
+import tensorflow as tf
 import google.generativeai as genai
 from ultralytics import YOLO
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-# Load once
-_yolo_model = YOLO("yolov8l.pt")
+
+# Load model and class for YOLO
+yolo_model = None
+
+def load_yolo_model():
+    global yolo_model
+    if yolo_model is not None:
+        return yolo_model
+    print("\n🔵 Loading YOLOv8 model...")
+    try:
+        yolo_model = YOLO("yolov8l.pt")
+        print("\n🟢 YOLOv8 model loaded.")
+    except Exception as e:
+        print(f"\n🔴 Failed to load YOLOv8 model: {e}")
+        yolo_model = None
+    return yolo_model
+    
 
 # Might update later on...
-# Potential full list of COCO classes since using YOLOv8 pretrained on COCO
-FOOD_CLASS_NAMES = {
+yolo_CLASS_NAMES = {
     # Fruits
     "banana": True, "apple": True, "orange": True, "lemon": True, "watermelon": True,
     "grapes": True, "strawberry": True, "blueberry": True, "kiwi": True,
@@ -46,10 +61,10 @@ FOOD_CLASS_NAMES = {
     "cheese": True, "milk": True, "yogurt": True, "butter": True,
 
     # Proteins & Prepared
-    "egg": True, "sandwich": True, "pizza": True, "hot dog": True, "cake": True,
+    "egg": True, "sandwich": True, "hot dog": True, "cake": True,
     "donut": True,
 
-    # Containers & condiments that are almost always food-related in a fridge
+    # Food related items but not food per se
     "bottle": True,      # milk, juice, water, sauce
     "wine glass": True,  # could hold yogurt or dessert
     "cup": True,         # yogurt cups, pudding
@@ -57,13 +72,41 @@ FOOD_CLASS_NAMES = {
     "spoon": True,       # usually in yogurt or dessert
     "fork": True,
     "knife": True,       # rarely wrong in context
-
+    
+    # Block some ambiguous ones
+    "pizza": False,
+     
     # Explicitly block non-food
     "person": False, "chair": False, "tv": False, "laptop": False, "cell phone": False,
     "book": False, "teddy bear": False, "potted plant": False, "vase": False,
     "refrigerator": False, "oven": False, "microwave": False, "sink": False,
     "clock": False, "suitcase": False, "backpack": False, "handbag": False,
 }
+
+
+# load model and class for custom CNN model
+custom_tf_model = None
+cnn_CLASS_NAMES = [
+        'apple', 'banana', 'beetroot', 'bell pepper', 'cabbage', 'capsicum', 'carrot', 'cauliflower',
+        'chilli pepper', 'corn', 'cucumber', 'eggplant', 'garlic', 'ginger', 'grapes', 'jalepeno',
+        'kiwi', 'lemon', 'lettuce', 'mango', 'onion', 'orange', 'paprika', 'pear', 'peas',
+        'pineapple', 'pomegranate', 'potato', 'raddish', 'soy beans', 'spinach', 'sweetcorn',
+        'sweetpotato', 'tomato', 'turnip', 'watermelon'
+    ]
+
+# Load custom CNN model
+def load_cnn_model():
+    global custom_tf_model
+    if custom_tf_model is not None:
+        return custom_tf_model
+    print("\n🔵 Loading your ingredient_model.h5 fridge model")
+    try:
+        custom_tf_model = tf.keras.models.load_model("models/ingredient_model.h5")
+        print("\n🟢 Custom model loaded successfully!")
+    except Exception as e:
+        print(f"\n🔴 Failed to load .h5 model: {e}")
+        custom_tf_model = None
+    return custom_tf_model
 
 
 # Thread-safe lazy loading
@@ -74,7 +117,6 @@ _model = None
 # Global task tracker
 current_task: Optional[asyncio.Task] = None
 task_lock = threading.Lock()
-
 cancel_event = threading.Event()
 
 
@@ -97,21 +139,126 @@ def load_Qwen():
         except TimeoutError:
             raise RuntimeError("\n🔴 [Fallback] Qwen load timed out.")
     
+    
+# Preprocessing for custom model
+def preprocess_for_cnn(pil_img: Image.Image) -> np.ndarray:
+    img = pil_img.resize((224, 224))  
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+    return img_array.astype(np.float32)
 
+async def infer_cnn(pil_img: Image.Image) -> List[Dict]:
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
+    cnn_model = load_cnn_model()
+    if cnn_model is None:
+        return []
+
+    try:
+        img_array = await asyncio.to_thread(preprocess_for_cnn, pil_img)
+        if cancel_event.is_set():
+            raise asyncio.CancelledError()
+        preds = await asyncio.to_thread(cnn_model.predict, img_array)
+        conf = float(np.max(preds))
+        pred_idx = int(np.argmax(preds))
+
+        if conf > 0.3:
+            name = cnn_CLASS_NAMES[pred_idx].replace("_", " ").title()
+            return [{"name": name, "confidence": round(conf, 3)}]
+    except Exception as e:
+        print("\n🔴 Custom model inference failed:", e)
+    return []
+
+
+# Original YOLO inference
+def infer_yolo(pil_image: Image.Image) -> List[Dict]:
+    
+    yolo_model = load_yolo_model()
+    
+    open_cv_image = np.array(pil_image)
+    open_cv_image = open_cv_image[:, :, ::-1].copy()
+    img = cv.resize(open_cv_image, (640, 640))
+    results = yolo_model(img, conf=0.2, iou=0.45, verbose=False)[0]
+
+    detected = []
+    
+    if results.boxes is not None and len(results.boxes) > 0:
+        for box in results.boxes:
+            cls_name = results.names[int(box.cls[0])]
+            conf = float(box.conf[0])
+            if yolo_CLASS_NAMES.get(cls_name, False):
+                detected.append({
+                    "name": cls_name.capitalize(),
+                    "confidence": round(conf, 3)
+                })
+
+    seen = set()
+    final = []
+    for detect in detected:
+        if detect["name"] not in seen:
+            final.append(detect)
+            seen.add(detect["name"])
+    return final
+
+async def run_yolo_threadsafe(pil_img):
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+    return await asyncio.to_thread(infer_yolo, pil_img)
+
+
+# run both models and merge results
+async def detect_ingredients_hybrid(pil_image: Image.Image) -> List[Dict]:
+    # Run both models in parallel
+    yolo_task = run_yolo_threadsafe(pil_image)
+    cnn_task = infer_cnn(pil_image)
+
+    yolo_results, cnn_results = await asyncio.gather(yolo_task, cnn_task, return_exceptions=True)
+
+    yolo_detections = yolo_results if isinstance(yolo_results, list) else []
+    cnn_detections = cnn_results if isinstance(cnn_results, list) else []
+
+    all_detections = yolo_detections + cnn_detections
+
+    # merge and prefer highest confidence per item
+    merged = {}
+    for detect in all_detections:
+        name = detect["name"].lower()
+        if name not in merged or detect["confidence"] > merged[name]["confidence"]:
+            merged[name] = detect
+
+    final = list(merged.values())
+    return final[:] or [{"name": "No clear ingredients", "confidence": 0.0}]
+
+
+# Generate recipe with Qwen
 def generate_recipe_qwen(ingredient_names):
     
     tokenizer, model = load_Qwen() 
     
     messages = [
-        {"role": "system", "content": "You are a helpful 5 star chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
-        {"role": "user", "content": f"""Create a delicious recipe using only these ingredients: {', '.join(ingredient_names)}
+        {"role": "system", "content": "You are a helpful 5-star chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
+        {"role": "user", "content": 
+        f"""You are a 5-star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
 
-        Return ONLY clean markdown with:
-        - Recipe title (# Title)
-        - One-sentence description
-        - Ingredients list, add quantities if applicable
-        - Numbered steps
-        - Optional tip"""}
+            Include:
+            - Recipe name (# Title)
+            - One-sentence description
+            - Ingredients list (add realistic quantities where applicable)
+            - 6-10 concise cooking steps
+            - Optional tips
+
+            After generating the main recipe, add a final section:
+            
+            Include: 
+            - Other Possible Dishes (##)
+            Suggest 2-4 additional dishes that could realistically be made from one, two or more of the ingredients.
+            Rules:
+            - List dish names (short descriptions).
+            - Keep them plausible and not duplicates of the main dish.
+
+            RETURN RESULT IN MARKDOWN FORMAT ONLY.
+        """}
             ]
         
     # Use Qwen chat template
@@ -147,52 +294,7 @@ def generate_recipe_qwen(ingredient_names):
     return recipe_text
 
 
-
-# YOLOv8 model for ingredient detection
-def infer_image(pil_image):
-    
-    # Convert PIL → OpenCV format
-    open_cv_image = np.array(pil_image)
-    open_cv_image = open_cv_image[:, :, ::-1].copy()  # RGB → BGR
-
-    # Resize to 640x640, YOLOv8 default
-    img = cv.resize(open_cv_image, (640, 640))
-
-    # Inference with low threshold
-    results = _yolo_model(img, conf=0.2, iou=0.45, verbose=False)[0]
-
-    detected = []
-
-    if results.boxes is not None and len(results.boxes) > 0:
-        for box in results.boxes:
-            cls_id = int(box.cls[0]) 
-            cls_name = results.names[cls_id]    # name
-            conf = float(box.conf[0])           # confidence
-
-            if FOOD_CLASS_NAMES.get(cls_name, False):
-                detected.append({
-                    "name": cls_name.capitalize(),
-                    "confidence": round(conf, 3)
-                })
-
-    # Deduplicate already items and or overlap
-    seen = set()
-    final = []
-    for d in detected:
-        if d["name"] not in seen:
-            final.append(d)
-            seen.add(d["name"])
-
-    return final[:] or [{"name": "No ingredients detected", "confidence": 0.0}]
-
-
 # Async helper wraps
-async def run_inference_threadsafe(pil_img):
-    # run blocking infer_image in thread so the event loop is free
-    if cancel_event.is_set():
-        raise asyncio.CancelledError()
-    return await asyncio.to_thread(infer_image, pil_img)
-
 async def run_qwen_threadsafe(ingredient_names):
     # run blocking Qwen genearation in thread
     if cancel_event.is_set():
@@ -315,7 +417,7 @@ async def _detect_ingredients_task(file: UploadFile):
         raise asyncio.CancelledError()
 
     # YOLO inference in thread
-    ingredients = await run_inference_threadsafe(pil_img)
+    ingredients = await detect_ingredients_hybrid(pil_img)
 
     if cancel_event.is_set():
         raise asyncio.CancelledError()
@@ -382,14 +484,25 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
                 gen_model = genai.GenerativeModel("gemini-2.5-pro")
 
                 prompt = f"""
-                You are a 5 star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
-                Include:
-                - Recipe name (# Title)
-                - One-sentence description
-                - Ingredients list, add quantities if applicable
-                - 6-10 concise steps
-                - Optional tips
-                RETURN RESULT IN MARKDOWN FORMAT ONLY.
+                    You are a 5-star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
+
+                    Include:
+                    - Recipe name (# Title)
+                    - One-sentence description
+                    - Ingredients list (add realistic quantities where applicable)
+                    - 6-10 concise cooking steps
+                    - Optional tips
+
+                    After generating the main recipe, add a final section:
+                    
+                    Include: 
+                    - Other Possible Dishes (##)
+                    Suggest 2-4 additional dishes that could realistically be made from one, two or more of the ingredients.
+                    Rules:
+                    - List dish names (short descriptions).
+                    - Keep them plausible and not duplicates of the main dish.
+
+                    RETURN RESULT IN MARKDOWN FORMAT ONLY.
                 """
 
                 print("\n🟡 Trying Gemini...")
@@ -431,7 +544,7 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
                 end = time.time()
                 print(f"⌛ Time taken: {end-start:.2f}s\n")
             except asyncio.CancelledError:
-                print("\n🔴 Generation cancelled during Qwen stage.")
+                print("\n🔴 Generation cancelled at Qwen stage.")
                 raise
             except Exception as e_local2:
                 print("\n🔴 Qwen failed:", e_local2)
@@ -458,4 +571,4 @@ def health():
 
 # Run app
 if __name__ == "__main__":
-    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860)
+    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860, reload=True)
