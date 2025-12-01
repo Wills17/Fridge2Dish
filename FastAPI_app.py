@@ -239,7 +239,7 @@ def generate_recipe_qwen(ingredient_names):
     messages = [
         {"role": "system", "content": "You are a helpful 5-star chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
         {"role": "user", "content": 
-        f"""You are a 5-star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
+        f"""You are a 5-star AI chef. Create a short recipe using ONLY: {', '.join(ingredient_names)}.
 
             Include:
             - Recipe name (# Title)
