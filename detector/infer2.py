@@ -4,7 +4,7 @@ from tensorflow.keras.preprocessing import image
 import numpy as np
 import os
 
-MODEL_PATH = "models/ingredient_model_2.h5"
+MODEL_PATH = "models/ingredient_model.h5"
 MODEL = tf.keras.models.load_model(MODEL_PATH)
 CLASS_NAMES = sorted(os.listdir("dataset/dataset_2/train"))  # folder names = class names
 
