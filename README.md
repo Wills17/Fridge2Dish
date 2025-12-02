@@ -182,7 +182,7 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 ```
 ---
 
-## Author
+## 👤 Author
 
 **Williams Odunayo**
 *Machine Learning Engineer*  
