@@ -1,92 +1,162 @@
----
-title: Fridge2Dish
-emoji: 🍳
-colorFrom: blue
-colorTo: green
-sdk: docker
-short_description: A cooking assistant that turns ingredients to recipes.
-pinned: false
-license: mit
-app_port: 7860
----
+# **Fridge2Dish — AI Ingredient Detector + Recipe Generator 🍳**
 
-# Fridge2Dish — AI Ingredient Detector + Recipe Generator
+Turn a simple photo of ingredients into a ready-to-cook recipe in seconds.
 
-Turn a photo of ingredients into a ready-to-cook recipe in seconds.
+Fridge2Dish combines **computer vision**, **LLM reasoning**, and a **fallback offline model** into one intelligent cooking assistant:
 
-- Real-time ingredient detection powered by **YOLO** (state-of-the-art)
-- Click “Scan” → get a full recipe (**Gemini 2.5 Pro** if you provide a key or **Qwen2.5-1.5B** [free offline fallback]).
-- Cancel any long-running request with one click.
+* Upload a photo → YOLO detects ingredients
+* Click **Scan** → the app generates *multiple dishes you can make*
+* Uses **Gemini 2.5 Pro** (if you have a key) or **Qwen2.5-1.5B-Instruct** as a completely offline fallback
+* Built-in **cancel system** stops the request instantly
+* Mobile-friendly UI with dark mode, smooth animations, and no frameworks
 
 ---
-## Live demo: [Fridge2Dish](https://wills17-fridge2dish.hf.space/)
 
+## 🚀 **Live Demo**
 
-## Features
-- Accurate detection of **real fridge ingredients** (banana, watermelon, eggs, cheese, yogurt, broccoli, etc.)
-- Confidence scores with smooth animated bars.
-- Two recipe backends:
-  - Gemini 2.5 Pro (optional API key – fastest & highest quality, ~ <15s load)
-  - Qwen2.5-1.5B-Instruct (offline fallback – no key required, ~20–60s load)
-- Mobile-friendly UI with dark mode
-- Pure HTML/CSS/JS frontend (no frameworks)
+**Try it here:** [https://wills17-fridge2dish.hf.space/](https://wills17-fridge2dish.hf.space/)
 
-## Tech Stack
-- **FastAPI** + Uvicorn
-- **YOLOv8l** (Ultralytics) — best-in-class object detection
-- **PyTorch CPU** (fp16) + Transformers
-- **Google Gemini** (optional) + **Qwen2.5-1.5B-Instruct** (offline)
-- Pure HTML/CSS/JS frontend (zero frameworks)
+---
 
-## Project Structure
+##  **Features**
+
+### Ingredient Detection
+
+* Powered by **YOLOv8l** (Ultralytics) and a custom CNN model.
+* Works with real fridge ingredients.
+* Confidence bars with smooth animations.
+
+### Smart Recipe Generation
+
+Supports **two LLM backends**:
+
+1. **Gemini 2.5 Pro (Recommended)**
+
+   * Fast, high-quality, structured recipes.
+   * < 15s generation.
+
+2. **Offline Fallback -> Qwen2.5-1.5B-Instruct**
+
+   * No API key required.
+   * Runs locally via Transformers.
+   * Slow, lower quality.
+   * ~40–80s generation.
+
+### Recipe Output Includes
+
+* Title.
+* One-line description.
+* Ingredient list (quantities added automatically).
+* About 6–10 clean steps.
+* Optional tips
+* **NEW:** *Additional dishes you can make with the same ingredients*
+
+### Built-in Cancel System
+
+* Cancel any step (detection or recipe generation) instantly.
+* Frontend + backend interruption.
+* Clean UI reset.
+
+### Clean, Lightweight UI
+
+* **Pure HTML/CSS/JS**
+* Fully responsive.
+* Dark mode toggle.
+* Smooth ingredient animations.
+* Zero frontend frameworks.
+
+---
+
+## ⚙️ **Tech Stack**
+
+### Backend
+
+* **FastAPI + Uvicorn**.
+* **YOLOv8** for detection.
+* **PyTorch**.
+* **Transformers (Qwen2.5-1.5B)**.
+* **Gemini 2.5 Pro API** (optional).
+
+### Frontend
+
+* Vanilla **HTML/CSS/JS**.
+* Custom upload system.
+* Cancel system via **AbortController**.
+* Markdown rendering (via `marked.js`).
+
+---
+
+## 📁 **Project Structure**
+
 ```
 Fridge2Dish/
-├── Dockerfile
-├── requirements.txt
+├── dataset/
+│   └── dataset               # Path to dataset added
 │
-├── dataset/                      Used to train custom CNN model
 ├── detector/
 │   ├── infer.py
 │   ├── infer2.py
-│   └── train.ipynb                   
+│   └── train.ipynb
 │
 ├── models/
 │   └── ingredient_model.h5
 │
 ├── recipe_generator/
-│   ├── recipe_local.py
-│   ├── recipe_math.py
-│   └── recipe_online.py
+│   ├── recipe_local.py       # Offline Qwen recipe generator
+│   ├── recipe_math.py        # (Utility module)
+│   └── recipe_online.py      # Gemini recipe generator
 │
 ├── static/
-│   ├── scripts.js
+│   ├── scripts.js            # Frontend logic + cancel system
 │   └── styles.css
 │
 ├── templates/
 │   └── index.html
-│                    
-├── download_images.py
-├── FastAPI_app.py                Main app (YOLO + Gemini + Qwen)
+│
+├── FastAPI_app.py            # Main application
 ├── streamlit_app.py
+├── download_images.py
+├── Dockerfile
+├── requirements.txt
+├── LinkedIn.txt              # Social post draft
 └── README.md
 ```
 
-## Run Locally
+Path to dataset.
+```bash
+https://www.kaggle.com/datasets/youssefsalahzakria/fruit-and-vegetables-classification
+```
+
+---
+
+## 🧪 **Run Locally**
+
 ```bash
 git clone https://github.com/Wills17/fridge2dish.git
 cd fridge2dish
 pip install -r requirements.txt
-uvicorn app:app --reload --port 7860
+uvicorn FastAPI_app:app --reload --port 7860
 ```
-Open http://localhost:7860
 
-### Optional Gemini API Key
-Add your key in the app or set the environment variable:
+Visit:
+👉 **[http://localhost:7860](http://localhost:7860)**
+
+---
+
+## 🔑 Optional: Add Gemini API Key
+
+Inside the app UI **or** via env variable:
+
 ```bash
-GEMINI_API_KEY=your_key_here
+export GEMINI_API_KEY=your_key_here
 ```
 
-### Docker (Hugging Face Spaces)
+Without it, the app automatically switches to the **Qwen offline model**. If using local, this will download Qwen model and tensors during first use.
+
+---
+
+## 🐳 **Deploy with Docker**
+
 ```dockerfile
 FROM python:3.10
 
@@ -111,12 +181,18 @@ EXPOSE 7860
 
 CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 ```
+---
 
 ## Author
-**Williams Odunayo**  
-*Machine Learning Engineer | Builder of useful AI systems*😉
+
+**Williams Odunayo**
+*Machine Learning Engineer*  
+*Building practical AI systems that actually work* 😉
 
 ---
-## License
+
+## 📜 License
+
 Released under the **MIT License**.
-Free to use, modify, and build upon - attribution is appreciated.
+Feel free to use, modify, and build upon — attribution appreciated.
+
