@@ -227,9 +227,11 @@ async def detect_ingredients_hybrid(pil_image: Image.Image) -> List[Dict]:
         if name not in merged or detect["confidence"] > merged[name]["confidence"]:
             merged[name] = detect
 
-    final = list(merged.values())
-    return final[:] or [{"name": "No clear ingredients", "confidence": 0.0}]
-
+    final_detections = list(merged.values())
+    
+    # sort by confidence
+    final_detections.sort(key=lambda x: x["confidence"], reverse=True)
+    return final_detections or [{"name": "No clear ingredients", "confidence": 0.0}]
 
 # Generate recipe with Qwen
 def generate_recipe_qwen(ingredient_names):
@@ -571,5 +573,5 @@ def health():
 
 # Run app
 if __name__ == "__main__":
-    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860)
+    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860, reload=True)
     
