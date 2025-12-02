@@ -4,17 +4,17 @@ Turn a simple photo of ingredients into a ready-to-cook recipe in seconds.
 
 Fridge2Dish combines **computer vision**, **LLM reasoning**, and a **fallback offline model** into one intelligent cooking assistant:
 
-* Upload a photo → YOLO detects ingredients
-* Click **Scan** → the app generates *multiple dishes you can make*
-* Uses **Gemini 2.5 Pro** (if you have a key) or **Qwen2.5-1.5B-Instruct** as a completely offline fallback
-* Built-in **cancel system** stops the request instantly
-* Mobile-friendly UI with dark mode, smooth animations, and no frameworks
+* Upload a photo → YOLO detects ingredients.
+* Click **Scan** → the app generates *multiple dishes you can make*.
+* Uses **Gemini 2.5 Pro** (if you have a key) or **Qwen2.5-1.5B-Instruct** as a completely offline fallback.
+* Built-in **cancel system** stops the request instantly.
+* Mobile-friendly UI with dark mode, smooth animations, and no frameworks.
 
 ---
 
 ## 🚀 **Live Demo**
 
-**Try it here:** [https://wills17-fridge2dish.hf.space/](https://wills17-fridge2dish.hf.space/)
+**Try it here:** [**Fridge2Dish**](https://wills17-fridge2dish.hf.space/)
 
 ---
 
@@ -94,20 +94,20 @@ Fridge2Dish/
 │   └── dataset               # Path to dataset added
 │
 ├── detector/
-│   ├── infer.py
-│   ├── infer2.py
-│   └── train.ipynb
+│   ├── infer.py              # Uses MobileNetV2 model for inference
+│   ├── infer2.py             # Uses Custom trained CNN model for inference
+│   └── train.ipynb           # Training script for CNN model
 │
 ├── models/
-│   └── ingredient_model.h5
+│   └── ingredient_model.h5   # Custom CNN model
 │
 ├── recipe_generator/
-│   ├── recipe_local.py       # Offline Qwen recipe generator
+│   ├── recipe_local.py       # Offline recipe generator with gpt2.
 │   ├── recipe_math.py        # (Utility module)
-│   └── recipe_online.py      # Gemini recipe generator
+│   └── recipe_online.py      # Gemini recipe generator.
 │
 ├── static/
-│   ├── scripts.js            # Frontend logic + cancel system
+│   ├── scripts.js           
 │   └── styles.css
 │
 ├── templates/
@@ -115,10 +115,9 @@ Fridge2Dish/
 │
 ├── FastAPI_app.py            # Main application
 ├── streamlit_app.py
-├── download_images.py
+├── download_images.py        # web scrapping script for ingredients
 ├── Dockerfile
 ├── requirements.txt
-├── LinkedIn.txt              # Social post draft
 └── README.md
 ```
 
@@ -151,7 +150,7 @@ Inside the app UI **or** via env variable:
 export GEMINI_API_KEY=your_key_here
 ```
 
-Without it, the app automatically switches to the **Qwen offline model**. If using local, this will download Qwen model and tensors during first use.
+Without it, the app automatically switches to the **Qwen offline model**. If running locally, this will download Qwen's model and tensors during first use.
 
 ---
 
