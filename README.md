@@ -90,8 +90,7 @@ Supports **two LLM backends**:
 
 ```
 Fridge2Dish/
-├── dataset/
-│   └── dataset               # Path to dataset added
+├── dataset                   # Path to dataset added below
 │
 ├── detector/
 │   ├── infer.py              # Uses MobileNetV2 model for inference
