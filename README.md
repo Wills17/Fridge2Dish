@@ -12,7 +12,7 @@ Fridge2Dish combines **computer vision**, **LLM reasoning**, and a **fallback of
 
 ---
 
-## 🚀 **Live Demo**
+## **Live Demo**
 
 **Try it here:** [**Fridge2Dish**](https://wills17-fridge2dish.hf.space/)
 
@@ -86,7 +86,7 @@ Supports **two LLM backends**:
 
 ---
 
-## 📁 **Project Structure**
+## **Project Structure**
 
 ```
 Fridge2Dish/
@@ -98,7 +98,7 @@ Fridge2Dish/
 │
 ├── models/
 │   ├── ingredient_model.keras
-│   └── ingredient_model.h5      # Custom CNN models
+│   └── ingredient_model.h5      # Custom CNN models after training...
 │
 ├── recipe_generator/
 │   ├── recipe_local.py          # Offline recipe generator with gpt2.
@@ -124,12 +124,12 @@ Fridge2Dish/
 
 Path to dataset.
 ```bash
-https://www.kaggle.com/datasets/youssefsalahzakria/fruit-and-vegetables-classification
+https://www.kaggle.com/kritikseth/fruit-and-vegetable-image-recognition
 ```
 
 ---
 
-## 🧪 **Run Locally**
+## **Run Locally**
 
 ```bash
 git clone https://github.com/Wills17/fridge2dish.git
@@ -143,7 +143,7 @@ Visit:
 
 ---
 
-## 🔑 Optional: Add Gemini API Key
+## Optional: Add Gemini API Key
 
 Inside the app UI **or** via env variable:
 
@@ -155,7 +155,7 @@ Without it, the app automatically switches to the **Qwen offline model**. If run
 
 ---
 
-## 🐳 **Deploy with Docker**
+## **Deploy with Docker**
 
 ```dockerfile
 FROM python:3.10
@@ -183,7 +183,7 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 ```
 ---
 
-## 👤 Author
+## Author
 
 **Williams Odunayo**
 *Machine Learning Engineer*  
@@ -191,7 +191,7 @@ CMD ["uvicorn", "FastAPI_app:app", "--host", "0.0.0.0", "--port", "7860"]
 
 ---
 
-## 📜 License
+## License
 
 Released under the **MIT License**.
 Feel free to use, modify, and build upon — attribution appreciated.
