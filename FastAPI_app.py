@@ -27,7 +27,6 @@ from ultralytics import YOLO
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-
 # Load model and class for YOLO
 yolo_model = None
 
@@ -99,12 +98,12 @@ def load_cnn_model():
     global custom_tf_model
     if custom_tf_model is not None:
         return custom_tf_model
-    print("\n🔵 Loading your ingredient_model.h5 fridge model")
+    print("\n🔵 Loading ingredient model")
     try:
-        custom_tf_model = tf.keras.models.load_model("models/ingredient_model.h5")
-        print("\n🟢 Custom model loaded successfully!")
+        custom_tf_model = tf.keras.models.load_model("models/ingredient_model.keras")
+        print("\n🟢 Ingredient model loaded successfully!")
     except Exception as e:
-        print(f"\n🔴 Failed to load .h5 model: {e}")
+        print(f"\n🔴 Failed to load model: {e}")
         custom_tf_model = None
     return custom_tf_model
 
@@ -241,7 +240,7 @@ def generate_recipe_qwen(ingredient_names):
     messages = [
         {"role": "system", "content": "You are a helpful 5-star chef. Always respond ONLY with clean markdown, no extra text, no greetings, no explanations."},
         {"role": "user", "content": 
-        f"""You are a 5-star AI chef. Create a short recipe using ONLY: {', '.join(ingredient_names)}.
+        f"""You are a 5-star human chef. Create a short recipe using ONLY: {', '.join(ingredient_names)}.
 
             Include:
             - Recipe name (# Title)
@@ -254,7 +253,7 @@ def generate_recipe_qwen(ingredient_names):
             
             Include: 
             - Other Possible Dishes (##)
-            Suggest 2-4 additional dishes that could realistically be made from one, two or more of the ingredients.
+            Suggest other 2-4 additional dishes that could be made from one, two or more of the ingredients.
             Rules:
             - List dish names (short descriptions).
             - Keep them plausible and not duplicates of the main dish.
@@ -483,10 +482,10 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
                     raise asyncio.CancelledError()
 
                 genai.configure(api_key=api_key)
-                gen_model = genai.GenerativeModel("gemini-2.5-pro")
+                gen_model = genai.GenerativeModel("gemini-2.5-flash")
 
                 prompt = f"""
-                    You are a 5-star AI chef. Create a short recipe using only: {', '.join(ingredient_names)}.
+                    You are a 5-star human chef. Create a short recipe using only: {', '.join(ingredient_names)}.
 
                     Include:
                     - Recipe name (# Title)
@@ -499,7 +498,7 @@ async def _generate_recipe_task(ingredients: str, user_api_key: str):
                     
                     Include: 
                     - Other Possible Dishes (##)
-                    Suggest 2-4 additional dishes that could realistically be made from one, two or more of the ingredients.
+                    Suggest other 2-4 additional dishes that could be made from one, two or more of the ingredients.
                     Rules:
                     - List dish names (short descriptions).
                     - Keep them plausible and not duplicates of the main dish.
@@ -573,5 +572,5 @@ def health():
 
 # Run app
 if __name__ == "__main__":
-    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860, reload=True)
+    uvicorn.run("FastAPI_app:app", host="0.0.0.0", port=7860)
     
