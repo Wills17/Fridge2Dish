@@ -6,7 +6,7 @@ Fridge2Dish combines **computer vision**, **LLM reasoning**, and a **fallback of
 
 * Upload a photo → YOLO detects ingredients.
 * Click **Scan** → the app generates *multiple dishes you can make*.
-* Uses **Gemini 2.5 Pro** (if you have a key) or **Qwen2.5-1.5B-Instruct** as a completely offline fallback.
+* Uses **Gemini 2.5 Flash** (if you have a key) or **Qwen2.5-1.5B-Instruct** as a completely offline (no api) fallback.
 * Built-in **cancel system** stops the request instantly.
 * Mobile-friendly UI with dark mode, smooth animations, and no frameworks.
 
@@ -30,7 +30,7 @@ Fridge2Dish combines **computer vision**, **LLM reasoning**, and a **fallback of
 
 Supports **two LLM backends**:
 
-1. **Gemini 2.5 Pro (Recommended)**
+1. **Gemini 2.5 Flash (Recommended)**
 
    * Fast, high-quality, structured recipes.
    * < 15s generation.
@@ -75,7 +75,7 @@ Supports **two LLM backends**:
 * **YOLOv8** for detection.
 * **PyTorch**.
 * **Transformers (Qwen2.5-1.5B)**.
-* **Gemini 2.5 Pro API** (optional).
+* **Gemini 2.5 Flash API** (optional).
 
 ### Frontend
 
@@ -90,20 +90,20 @@ Supports **two LLM backends**:
 
 ```
 Fridge2Dish/
-├── dataset                   # Path to dataset added below
+├── dataset                      # Path to dataset added below
 │
 ├── detector/
-│   ├── infer.py              # Uses MobileNetV2 model for inference
-│   ├── infer2.py             # Uses Custom trained CNN model for inference
-│   └── train.ipynb           # Training script for CNN model
+│   ├── infer.py                 # Uses MobileNetV2 model for inference 
+│   └── infer2.py                # Uses Custom trained CNN model for inference
 │
 ├── models/
-│   └── ingredient_model.h5   # Custom CNN model
+│   ├── ingredient_model.keras
+│   └── ingredient_model.h5      # Custom CNN models
 │
 ├── recipe_generator/
-│   ├── recipe_local.py       # Offline recipe generator with gpt2.
-│   ├── recipe_math.py        # (Utility module)
-│   └── recipe_online.py      # Gemini recipe generator.
+│   ├── recipe_local.py          # Offline recipe generator with gpt2.
+│   ├── recipe_math.py           # (Utility module)
+│   └── recipe_online.py         # Gemini recipe generator.
 │
 ├── static/
 │   ├── scripts.js           
@@ -112,9 +112,11 @@ Fridge2Dish/
 ├── templates/
 │   └── index.html
 │
-├── FastAPI_app.py            # Main application
+├── FastAPI_app.py               # Main application
 ├── streamlit_app.py
-├── download_images.py        # web scrapping script for ingredients
+├── train.ipynb                  # Training script for CNN model
+├── download_images.py           # web scrapping script for ingredients
+│
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
