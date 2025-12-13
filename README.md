@@ -40,7 +40,7 @@ Supports **two LLM backends**:
    * No API key required.
    * Runs locally via Transformers.
    * Slow, lower quality.
-   * ~40–80s generation.
+   * ~2m generation.
 
 ### Recipe Output Includes
 
