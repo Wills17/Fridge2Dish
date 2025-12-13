@@ -219,7 +219,7 @@ async function handleScan() {
             <div class="recipe-section">
                 <p style="text-align:center;padding:3rem">
                     <em>Chef is thinking...</em><br><br>
-                    This may take up to 60s without your Gemini API key.
+                    This may take up to 2 minutes without your Gemini API key.
                 </p>
             </div>`;
         elements.recipesList.appendChild(card);
