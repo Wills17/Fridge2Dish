@@ -67,7 +67,7 @@ Supports **two LLM backends**:
 
 ---
 
-## ⚙️ **Tech Stack**
+## **Tech Stack**
 
 ### Backend
 
