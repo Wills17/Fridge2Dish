@@ -63,14 +63,14 @@ yolo_CLASS_NAMES = {
     "egg": True, "sandwich": True, "hot dog": True, "cake": True,
     "donut": True,
 
-    # Food related items but not food per se
-    "bottle": True,      # milk, juice, water, sauce
-    "wine glass": True,  # could hold yogurt or dessert
-    "cup": True,         # yogurt cups, pudding
-    "bowl": True,        # fruit bowls, salad bowls
-    "spoon": True,       # usually in yogurt or dessert
-    "fork": True,
-    "knife": True,       # rarely wrong in context
+    # Food related items but not food ingredients per se
+    "bottle": False,
+    "wine glass": False,
+    "cup": False,
+    "bowl": False,
+    "spoon": False,
+    "fork": False,
+    "knife": False,
     
     # Block some ambiguous ones
     "pizza": False,
@@ -131,13 +131,13 @@ def load_Qwen():
         try:
             print("\n🔵 [Fallback] Loading Qwen2.5-1.5B-Instruct")
             _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", trust_remote_code=True)
-            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype=torch.float16)
+            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype="auto")
             print("\n🟢 [Fallback] Qwen ready!")
             return _tokenizer, _model
         
         except TimeoutError:
             raise RuntimeError("\n🔴 [Fallback] Qwen load timed out.")
-    
+
     
 # Preprocessing for custom model
 def preprocess_for_cnn(pil_img: Image.Image) -> np.ndarray:
