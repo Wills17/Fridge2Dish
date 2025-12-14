@@ -131,7 +131,7 @@ def load_Qwen():
         try:
             print("\n🔵 [Fallback] Loading Qwen2.5-1.5B-Instruct")
             _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", trust_remote_code=True)
-            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype="auto")
+            _model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct", device_map="auto", torch_dtype=torch.float16)
             print("\n🟢 [Fallback] Qwen ready!")
             return _tokenizer, _model
         
